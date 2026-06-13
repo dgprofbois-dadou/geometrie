@@ -2057,4 +2057,3 @@ document.addEventListener('DOMContentLoaded', () => {
     e.target.value = '';
   });
 });
-setTool('select');
