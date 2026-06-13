@@ -2056,4 +2056,81 @@ document.addEventListener('DOMContentLoaded', () => {
     reader.readAsText(file);
     e.target.value = '';
   });
+
+  // ── Left panel tabs ─────────────────────────────
+  document.querySelectorAll('.left-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.left-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
+      tab.classList.add('active');
+      const target = document.getElementById('tab-' + tab.dataset.tab);
+      if (target) target.style.display = 'flex';
+    });
+  });
+
+  // ── Exercise code editor (left panel) ────────────
+  const codeEditor = document.getElementById('ex-code-editor');
+  const codeLog    = document.getElementById('ex-code-log');
+
+  function logCode(msg, type = 'ok') {
+    codeLog.classList.add('has-log');
+    const line = document.createElement('div');
+    line.className = 'log-' + type;
+    line.textContent = msg;
+    codeLog.appendChild(line);
+    codeLog.scrollTop = codeLog.scrollHeight;
+  }
+
+  const btnRun = document.getElementById('ex-btn-run');
+  if (btnRun) btnRun.addEventListener('click', () => {
+    const code = codeEditor ? codeEditor.value.trim() : '';
+    if (!code) return;
+    codeLog.innerHTML = '';
+    codeLog.classList.remove('has-log');
+    try {
+      geoApp.loadExerciseFromText(code);
+      logCode('✔ Exercice exécuté avec succès.', 'ok');
+    } catch (e) {
+      logCode('✕ Erreur : ' + e.message, 'err');
+    }
+  });
+
+  const btnClearCode = document.getElementById('ex-btn-clear-code');
+  if (btnClearCode) btnClearCode.addEventListener('click', () => {
+    if (codeEditor) codeEditor.value = '';
+    codeLog.innerHTML = '';
+    codeLog.classList.remove('has-log');
+  });
+
+  // Charger un .js dans l'éditeur de code (panneau gauche)
+  const leftFileInput = document.getElementById('ex-left-file-input');
+  if (leftFileInput) leftFileInput.addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      if (codeEditor) codeEditor.value = ev.target.result;
+      // Switcher vers l'onglet Exercice
+      document.querySelectorAll('.left-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
+      const tab = document.querySelector('[data-tab="exercise"]');
+      const panel = document.getElementById('tab-exercise');
+      if (tab) tab.classList.add('active');
+      if (panel) panel.style.display = 'flex';
+      logCode('📂 Fichier chargé : ' + file.name, 'ok');
+      codeLog.classList.add('has-log');
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  });
+
+  // Tab indentation dans l'éditeur
+  if (codeEditor) codeEditor.addEventListener('keydown', e => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const s = codeEditor.selectionStart;
+      codeEditor.value = codeEditor.value.slice(0, s) + '  ' + codeEditor.value.slice(codeEditor.selectionEnd);
+      codeEditor.selectionStart = codeEditor.selectionEnd = s + 2;
+    }
+  });
 });

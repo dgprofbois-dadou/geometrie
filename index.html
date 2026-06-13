@@ -177,13 +177,39 @@
 
     <!-- Zone principale -->
     <div id="main-area">
-      <!-- Panneau gauche (algèbre/objets) -->
+      <!-- Panneau gauche (onglets Objets / Exercice) -->
       <div id="algebra-panel">
         <div id="algebra-header">
-          <h3>Objets</h3>
+          <div id="left-tabs">
+            <button class="left-tab active" data-tab="objects">Objets</button>
+            <button class="left-tab" data-tab="exercise">Exercice</button>
+          </div>
           <button id="toggle-algebra" title="Masquer le panneau">◀</button>
         </div>
-        <div id="algebra-list"></div>
+
+        <!-- Onglet Objets -->
+        <div id="tab-objects" class="tab-content active">
+          <div id="algebra-list"></div>
+        </div>
+
+        <!-- Onglet Exercice -->
+        <div id="tab-exercise" class="tab-content" style="display:none">
+          <div id="ex-left-toolbar">
+            <label id="ex-left-load-btn" title="Charger un fichier .js">
+              📂 Charger .js
+              <input type="file" id="ex-left-file-input" accept=".js" style="display:none">
+            </label>
+            <a href="editeur-exercice.html" target="_blank" id="ex-editor-link" title="Ouvrir l'éditeur d'exercices">✏️ Éditeur</a>
+          </div>
+          <div id="ex-code-area">
+            <textarea id="ex-code-editor" spellcheck="false" placeholder="// Collez ou écrivez ici le code d'un exercice&#10;// puis cliquez sur Exécuter.&#10;&#10;// Exemple :&#10;// geoApp.setupExercise({&#10;//   title: 'Mon exercice',&#10;//   instructions: 'Tracez un segment.',&#10;//   totalQuestions: 1&#10;// });"></textarea>
+          </div>
+          <div id="ex-code-btns">
+            <button id="ex-btn-run">▶ Exécuter</button>
+            <button id="ex-btn-clear-code">✕ Vider</button>
+          </div>
+          <div id="ex-code-log"></div>
+        </div>
       </div>
 
       <!-- Canvas principal -->
