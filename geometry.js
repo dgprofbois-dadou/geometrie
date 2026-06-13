@@ -1786,4 +1786,275 @@ resizeCanvas();
 state.undoStack.push(JSON.stringify([]));
 updateUndoButtons();
 updateAlgebra();
+
+// ══════════════════════════════════════════════════════
+// geoApp PUBLIC API  (compatible GeoGebra ggbApplet)
+// ══════════════════════════════════════════════════════
+
+const geoVars = {};
+
+const _geoListeners = {
+  click: [],
+  add: [],
+  objectClick: {},   // name → [cb]
+  objectUpdate: {}   // name → [cb]
+};
+
+function _fireAdd(label) {
+  _geoListeners.add.forEach(cb => { try { cb(label); } catch(e) {} });
+}
+function _fireObjectUpdate(label) {
+  (_geoListeners.objectUpdate[label] || []).forEach(cb => { try { cb(label); } catch(e) {} });
+}
+
+// Patch push/pushBatch to fire add listeners
+const _origPush = push;
+function push(obj) {
+  state.objects.push(obj);
+  saveUndo();
+  updateAlgebra();
+  _fireAdd(obj.label);
+}
+
+const geoApp = {
+
+  // ── Object manipulation ──────────────────────────
+
+  setCoords(name, x, y) {
+    const obj = state.objects.find(o => o.label === name);
+    if (!obj || obj.type !== 'point') return;
+    obj.x = x; obj.y = y;
+    evalAll(); render(); updateAlgebra();
+    _fireObjectUpdate(name);
+  },
+
+  setFixed(name, fixed) {
+    const obj = state.objects.find(o => o.label === name);
+    if (obj) { obj.fixed = fixed; render(); }
+  },
+
+  setColor(name, r, g, b) {
+    const obj = state.objects.find(o => o.label === name);
+    if (obj) { obj.color = `rgb(${r},${g},${b})`; render(); updateAlgebra(); }
+  },
+
+  setLineStyle(name, style) {
+    const obj = state.objects.find(o => o.label === name);
+    if (obj) { obj.lineStyle = style; render(); }
+  },
+
+  setVisible(name, vis) {
+    const obj = state.objects.find(o => o.label === name);
+    if (obj) { obj.visible = vis; render(); updateAlgebra(); }
+  },
+
+  deleteObject(name) {
+    const idx = state.objects.findIndex(o => o.label === name);
+    if (idx >= 0) { state.objects.splice(idx, 1); evalAll(); render(); updateAlgebra(); }
+  },
+
+  setValue(name, val) { geoVars[name] = val; },
+  getValue(name) { return geoVars[name]; },
+
+  setMode(mode) {
+    const map = { 0: 'select', 10: 'point', 15: 'segment' };
+    const tool = map[mode];
+    if (!tool) return;
+    state.tool = tool;
+    document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+    const btn = document.querySelector(`[data-tool="${tool}"]`);
+    if (btn) btn.classList.add('active');
+  },
+
+  // ── Listeners ────────────────────────────────────
+
+  registerClickListener(cb) { _geoListeners.click.push(cb); },
+
+  registerObjectClickListener(name, cb) {
+    (_geoListeners.objectClick[name] = _geoListeners.objectClick[name] || []).push(cb);
+  },
+
+  registerObjectUpdateListener(name, cb) {
+    (_geoListeners.objectUpdate[name] = _geoListeners.objectUpdate[name] || []).push(cb);
+  },
+
+  registerAddListener(cb) { _geoListeners.add.push(cb); },
+
+  // ── Exercise panel ───────────────────────────────
+
+  setupExercise({ title, instructions, imageUrl, totalQuestions }) {
+    const panel = document.getElementById('exercise-panel');
+    if (!panel) return;
+    panel.classList.remove('hidden');
+    document.getElementById('ex-title').textContent = title || '';
+    document.getElementById('ex-instructions').textContent = instructions || '';
+    document.getElementById('ex-score').textContent = '0 / ' + (totalQuestions || 0);
+    document.getElementById('ex-question-num').textContent = '1 / ' + (totalQuestions || 0);
+    const img = document.getElementById('ex-ref-image');
+    if (imageUrl && img) { img.src = imageUrl; img.style.display = 'block'; }
+    else if (img) img.style.display = 'none';
+  },
+
+  setQuestion(num, total) {
+    const el = document.getElementById('ex-question-num');
+    if (el) el.textContent = num + ' / ' + total;
+  },
+
+  setInstructions(text) {
+    const el = document.getElementById('ex-instructions');
+    if (el) el.textContent = text;
+  },
+
+  updateScore(score, total) {
+    const el = document.getElementById('ex-score');
+    if (el) el.textContent = score + ' / ' + total;
+  },
+
+  setZoneState(zoneId, zoneState) {
+    const el = document.getElementById(zoneId);
+    if (!el) return;
+    el.dataset.state = zoneState;
+    el.className = el.className.replace(/\bzone-state-\S+/g, '');
+    el.classList.add('zone-state-' + zoneState);
+  },
+
+  showZones() {
+    const el = document.getElementById('ex-zones');
+    if (el) el.style.display = '';
+  },
+
+  hideZones() {
+    const el = document.getElementById('ex-zones');
+    if (el) el.style.display = 'none';
+  },
+
+  // ── evalCommand ───────────────────────────────────
+
+  evalCommand(cmd) {
+    cmd = cmd.trim();
+
+    // Point assignment: name = Point(x, y)
+    const ptMatch = cmd.match(/^(\w+)\s*=\s*Point\(\s*([^,]+)\s*,\s*([^)]+)\s*\)$/i);
+    if (ptMatch) {
+      const name = ptMatch[1], x = parseFloat(ptMatch[2]), y = parseFloat(ptMatch[3]);
+      const existing = state.objects.find(o => o.label === name);
+      if (existing && isPointLike(existing)) {
+        existing.x = x; existing.y = y; evalAll(); render(); updateAlgebra();
+      } else {
+        const obj = { id: uid(), type: 'point', label: name, x, y,
+          color: '#7c9eff', lineWidth: 2, visible: true, fixed: false };
+        state.objects.push(obj);
+        evalAll(); render(); updateAlgebra();
+        _fireAdd(name);
+      }
+      return name;
+    }
+
+    // SetDynamicColor(name, r, g, b)
+    const colorMatch = cmd.match(/^SetDynamicColor\(\s*(\w+)\s*,\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^)]+)\s*\)$/i);
+    if (colorMatch) {
+      const [, name, r, g, b] = colorMatch;
+      geoApp.setColor(name, Math.round(parseFloat(r) * 255), Math.round(parseFloat(g) * 255), Math.round(parseFloat(b) * 255));
+      return;
+    }
+
+    // ZoomIn / ZoomOut
+    if (/^ZoomIn\b/i.test(cmd)) { state.scale = Math.min(state.scale * 1.3, 400); render(); return; }
+    if (/^ZoomOut\b/i.test(cmd)) { state.scale = Math.max(state.scale / 1.3, 5); render(); return; }
+
+    // AreEqual(a, b) → boolean
+    const eqMatch = cmd.match(/^AreEqual\(\s*(\w+)\s*,\s*(\w+)\s*\)$/i);
+    if (eqMatch) {
+      const a = geoVars[eqMatch[1]], b = geoVars[eqMatch[2]];
+      return a === b;
+    }
+
+    // Simple assignment: name = value
+    const assignMatch = cmd.match(/^(\w+)\s*=\s*(.+)$/);
+    if (assignMatch) {
+      const val = assignMatch[2].trim();
+      geoVars[assignMatch[1]] = isNaN(val) ? val : parseFloat(val);
+    }
+  },
+
+  loadExerciseFromText(jsCode) {
+    try {
+      // eslint-disable-next-line no-new-func
+      new Function('geoApp', 'geoVars', jsCode)(geoApp, geoVars);
+    } catch (e) {
+      console.error('Erreur chargement exercice:', e);
+      alert('Erreur lors du chargement de l\'exercice:\n' + e.message);
+    }
+  },
+
+  // ── Introspection (for exercise validation) ───────
+
+  getAllObjects() {
+    return state.objects.map(obj => {
+      const info = { label: obj.label, type: obj.type, visible: obj.visible, fixed: !!obj.fixed };
+      if (isPointLike(obj)) { info.x = obj.x; info.y = obj.y; }
+      if (obj.type === 'segment' || obj.type === 'line' || obj.type === 'ray' || obj.type === 'vector') {
+        const p1 = getPoint(obj.p1id), p2 = getPoint(obj.p2id);
+        if (p1 && p2) { info.p1 = { x: p1.x, y: p1.y }; info.p2 = { x: p2.x, y: p2.y }; }
+      }
+      if (obj.type === 'circle' || obj.type === 'circle3pts') {
+        const c = obj.centerId ? getPoint(obj.centerId) : { x: obj.cx, y: obj.cy };
+        if (c) { info.cx = c.x; info.cy = c.y; info.r = obj.r; }
+      }
+      return info;
+    });
+  },
+
+  getObjectCoords(name) {
+    const obj = state.objects.find(o => o.label === name);
+    if (!obj) return null;
+    if (isPointLike(obj)) return { x: obj.x, y: obj.y };
+    if (obj.type === 'segment' || obj.type === 'line') {
+      const p1 = getPoint(obj.p1id), p2 = getPoint(obj.p2id);
+      return p1 && p2 ? { p1, p2 } : null;
+    }
+    return null;
+  }
+};
+
+// ── Wire canvas click → geoApp click listeners ────
+canvas.addEventListener('click', e => {
+  const rect = canvas.getBoundingClientRect();
+  const w = canvasToWorld(e.clientX - rect.left, e.clientY - rect.top);
+  _geoListeners.click.forEach(cb => { try { cb(w.x, w.y); } catch(err) {} });
+  const hit = objectAtCanvas(e.clientX - rect.left, e.clientY - rect.top);
+  if (hit) {
+    (_geoListeners.objectClick[hit.label] || []).forEach(cb => { try { cb(hit.label); } catch(err) {} });
+  }
+});
+
+// ── Exercise panel button wiring ──────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  const btnValidate = document.getElementById('ex-btn-validate');
+  const btnNext     = document.getElementById('ex-btn-next');
+  const btnReset    = document.getElementById('ex-btn-reset');
+  const fileInput   = document.getElementById('ex-file-input');
+
+  if (btnValidate) btnValidate.addEventListener('click', () => {
+    const fn = geoVars['__onValidate'];
+    if (typeof fn === 'function') fn();
+  });
+  if (btnNext) btnNext.addEventListener('click', () => {
+    const fn = geoVars['__onNext'];
+    if (typeof fn === 'function') fn();
+  });
+  if (btnReset) btnReset.addEventListener('click', () => {
+    if (!confirm('Réinitialiser l\'exercice ?')) return;
+    const fn = geoVars['__onReset'];
+    if (typeof fn === 'function') fn();
+  });
+  if (fileInput) fileInput.addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => geoApp.loadExerciseFromText(ev.target.result);
+    reader.readAsText(file);
+    e.target.value = '';
+  });
+});
 setTool('select');

@@ -447,6 +447,160 @@ body {
 }
 #input-dialog-cancel:hover { color: var(--text); border-color: var(--text-muted); }
 
+/* ── Exercise panel ── */
+#exercise-panel {
+  position: fixed;
+  right: 0; top: 0; bottom: 0;
+  width: 260px;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  z-index: 50;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+#exercise-panel.hidden { display: none; }
+
+#ex-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface2);
+  flex-shrink: 0;
+}
+
+#ex-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent2);
+}
+
+#ex-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+#ex-score {
+  color: var(--success);
+  font-weight: 600;
+}
+
+#ex-load-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  margin-top: 4px;
+  transition: all .12s;
+}
+#ex-load-btn:hover { color: var(--text); border-color: var(--accent); }
+
+#ex-instructions {
+  padding: 12px 14px;
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.5;
+  background: rgba(124,158,255,.06);
+  border-bottom: 1px solid var(--border);
+  min-height: 48px;
+  flex-shrink: 0;
+}
+
+#ex-ref-image {
+  width: 100%;
+  max-height: 160px;
+  object-fit: contain;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* Orthographic grid */
+#ex-zones {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.ortho-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+
+.ortho-cell {
+  aspect-ratio: 1;
+  border-radius: 5px;
+}
+
+.ortho-zone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--border);
+  border-radius: 5px;
+  cursor: default;
+  transition: all .2s;
+  position: relative;
+}
+
+.zone-label {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--text-muted);
+}
+
+.zone-state-neutral  { background: var(--bg); border-color: var(--border); }
+.zone-state-active   { background: rgba(124,158,255,.12); border-color: var(--accent); }
+.zone-state-active .zone-label { color: var(--accent); }
+.zone-state-correct  { background: rgba(166,227,161,.15); border-color: var(--success); }
+.zone-state-correct .zone-label { color: var(--success); }
+.zone-state-error    { background: rgba(243,139,168,.15); border-color: var(--danger); }
+.zone-state-error .zone-label { color: var(--danger); }
+
+/* Exercise action buttons */
+#ex-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  margin-top: auto;
+  border-top: 1px solid var(--border);
+}
+
+.ex-btn {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .15s;
+}
+.ex-btn:hover { border-color: var(--accent); color: var(--accent); }
+.ex-btn-primary { background: var(--accent); color: #0f0f1a; border-color: var(--accent); }
+.ex-btn-primary:hover { filter: brightness(1.1); color: #0f0f1a; }
+.ex-btn-danger:hover { border-color: var(--danger); color: var(--danger); }
+
 /* Scrollbars */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }

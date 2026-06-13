@@ -1,0 +1,1562 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Éditeur d'exercices — Géométrie</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #1e1e2e;
+      --surface: #2a2a3e;
+      --surface2: #313145;
+      --border: #3f3f5a;
+      --accent: #7c9eff;
+      --accent2: #a5c8ff;
+      --text: #cdd6f4;
+      --text-muted: #7f849c;
+      --danger: #f38ba8;
+      --success: #a6e3a1;
+      --warn: #f9e2af;
+      --highlight: rgba(124,158,255,.15);
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Top bar ── */
+    #topbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 14px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    #topbar h1 {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--accent2);
+      flex: 1;
+    }
+
+    .topbar-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all .15s;
+    }
+    .topbar-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .topbar-btn.primary { background: var(--accent); color: #0f0f1a; border-color: var(--accent); }
+    .topbar-btn.primary:hover { filter: brightness(1.1); color: #0f0f1a; }
+
+    /* ── 3-column layout ── */
+    #workspace {
+      display: grid;
+      grid-template-columns: 280px 1fr 300px;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── Left panel ── */
+    #left-panel {
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      scrollbar-width: thin;
+    }
+
+    .panel-section {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .panel-section h3 {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+
+    .form-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 10px;
+    }
+
+    .form-row label {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .form-row input[type=text],
+    .form-row input[type=number],
+    .form-row input[type=url],
+    .form-row textarea,
+    .form-row select {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      color: var(--text);
+      font-size: 12px;
+      padding: 5px 8px;
+      width: 100%;
+      transition: border-color .12s;
+    }
+    .form-row input:focus, .form-row textarea:focus, .form-row select:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    .form-row textarea { resize: vertical; min-height: 60px; font-family: inherit; }
+
+    .img-preview {
+      width: 100%;
+      max-height: 120px;
+      object-fit: contain;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      margin-top: 6px;
+      display: none;
+    }
+
+    .upload-row {
+      display: flex;
+      gap: 6px;
+      margin-top: 4px;
+    }
+
+    .upload-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      font-size: 11px;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all .12s;
+    }
+    .upload-label:hover { color: var(--text); border-color: var(--accent); }
+
+    /* ── Canvas center ── */
+    #center-panel {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: #0f0f1a;
+      position: relative;
+    }
+
+    #canvas-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 6px 10px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .ctool-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      padding: 4px 8px;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 10px;
+      cursor: pointer;
+      transition: all .12s;
+      min-width: 52px;
+    }
+    .ctool-btn svg { width: 18px; height: 18px; flex-shrink: 0; }
+    .ctool-btn:hover { background: var(--highlight); border-color: var(--border); color: var(--text); }
+    .ctool-btn.active { background: var(--highlight); border-color: var(--accent); color: var(--accent); }
+
+    .ctool-sep { width: 1px; height: 32px; background: var(--border); margin: 0 4px; }
+
+    #canvas-info {
+      position: absolute;
+      bottom: 8px;
+      left: 8px;
+      font-size: 10px;
+      color: var(--text-muted);
+      font-family: monospace;
+      background: rgba(0,0,0,.5);
+      padding: 2px 8px;
+      border-radius: 4px;
+      pointer-events: none;
+    }
+
+    #canvas-hint {
+      position: absolute;
+      bottom: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 11px;
+      color: var(--accent);
+      background: rgba(0,0,0,.6);
+      padding: 4px 12px;
+      border-radius: 6px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity .2s;
+    }
+    #canvas-hint.visible { opacity: 1; }
+
+    #editor-canvas { display: block; flex: 1; cursor: crosshair; }
+
+    /* ── Right panel ── */
+    #right-panel {
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    #right-panel > .panel-section:first-child { flex-shrink: 0; }
+
+    #questions-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    #questions-header h3 {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--text-muted);
+    }
+
+    #btn-add-question {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      border-radius: 5px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all .12s;
+    }
+    #btn-add-question:hover { background: var(--highlight); }
+
+    #questions-list {
+      flex: 0 0 auto;
+      max-height: 140px;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .q-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 14px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: background .1s;
+      border-left: 3px solid transparent;
+    }
+    .q-item:hover { background: var(--highlight); }
+    .q-item.active { background: var(--highlight); border-left-color: var(--accent); }
+    .q-item-num { font-weight: 700; color: var(--accent); min-width: 20px; }
+    .q-item-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: 11px; }
+    .q-item-obj-count {
+      font-size: 10px;
+      color: var(--text-muted);
+      background: var(--surface2);
+      padding: 1px 5px;
+      border-radius: 8px;
+    }
+    .q-delete {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 13px;
+      padding: 0 3px;
+      opacity: 0;
+      transition: opacity .12s;
+    }
+    .q-item:hover .q-delete { opacity: 1; }
+    .q-delete:hover { color: var(--danger); }
+
+    /* Question editor */
+    #question-editor {
+      flex: 1;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      padding: 12px 14px;
+    }
+
+    #question-editor h4 {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+
+    #question-editor .no-q {
+      color: var(--text-muted);
+      font-size: 12px;
+      font-style: italic;
+      text-align: center;
+      margin-top: 24px;
+    }
+
+    /* Zone checkboxes */
+    .zone-checks {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4px;
+      margin: 6px 0 10px;
+    }
+
+    .zone-check {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      padding: 5px 4px;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      cursor: pointer;
+      transition: all .12s;
+      font-size: 9px;
+      font-weight: 600;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+    .zone-check input { cursor: pointer; accent-color: var(--accent); }
+    .zone-check:has(input:checked) {
+      border-color: var(--accent);
+      background: rgba(124,158,255,.1);
+      color: var(--accent);
+    }
+
+    /* Ref objects list */
+    #ref-objects-list {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+
+    .ref-obj-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 8px;
+      font-size: 11px;
+      border-bottom: 1px solid var(--border);
+      transition: background .1s;
+    }
+    .ref-obj-item:last-child { border-bottom: none; }
+    .ref-obj-item:hover { background: var(--highlight); }
+
+    .ref-obj-icon { font-size: 14px; flex-shrink: 0; }
+    .ref-obj-coords { flex: 1; font-family: monospace; color: var(--text-muted); font-size: 10px; }
+    .ref-obj-del {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 12px;
+      opacity: 0;
+      transition: opacity .12s;
+    }
+    .ref-obj-item:hover .ref-obj-del { opacity: 1; }
+    .ref-obj-del:hover { color: var(--danger); }
+
+    .empty-objects {
+      padding: 10px;
+      text-align: center;
+      font-size: 11px;
+      color: var(--text-muted);
+      font-style: italic;
+    }
+
+    /* Tolerance row */
+    .tolerance-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      margin-top: 6px;
+    }
+    .tolerance-row label { color: var(--text-muted); font-size: 11px; }
+    .tolerance-row input { width: 70px; }
+
+    /* small tag button */
+    .tag-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 3px 8px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text-muted);
+      font-size: 10px;
+      cursor: pointer;
+      transition: all .12s;
+      font-weight: 600;
+    }
+    .tag-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Scrollbars */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<!-- Top bar -->
+<div id="topbar">
+  <a href="index.html" class="topbar-btn" title="Retour à l'application">← Retour</a>
+  <h1>Éditeur d'exercices — Représentation orthographique</h1>
+  <button class="topbar-btn" id="btn-preview-json" title="Aperçu JSON">{ } JSON</button>
+  <button class="topbar-btn primary" id="btn-export">⬇ Exporter .js</button>
+</div>
+
+<!-- Workspace -->
+<div id="workspace">
+
+  <!-- ── LEFT: Exercise metadata ── -->
+  <div id="left-panel">
+    <div class="panel-section">
+      <h3>Métadonnées</h3>
+
+      <div class="form-row">
+        <label>Titre de l'exercice</label>
+        <input type="text" id="ex-title" placeholder="Ex : Représentation orthographique n°1" value="">
+      </div>
+
+      <div class="form-row">
+        <label>Instructions générales</label>
+        <textarea id="ex-global-instructions" placeholder="Consigne générale visible au départ de l'exercice…" rows="3"></textarea>
+      </div>
+
+      <div class="form-row">
+        <label>Image de référence (URL)</label>
+        <input type="url" id="ex-image-url" placeholder="https://…/image.png">
+        <div class="upload-row">
+          <span style="font-size:11px;color:var(--text-muted)">ou</span>
+          <label class="upload-label">
+            📂 Importer un fichier
+            <input type="file" id="ex-image-file" accept="image/*" style="display:none">
+          </label>
+        </div>
+        <img id="ex-image-preview" class="img-preview" alt="Aperçu">
+      </div>
+
+      <div class="form-row">
+        <label>Nombre total de questions</label>
+        <input type="number" id="ex-total-questions" value="1" min="1" max="20">
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <h3>Options canvas</h3>
+      <div class="form-row">
+        <label>Grille (unités)</label>
+        <select id="opt-grid">
+          <option value="1" selected>1 unité</option>
+          <option value="0.5">0.5 unité</option>
+          <option value="2">2 unités</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Zoom initial</label>
+        <select id="opt-zoom">
+          <option value="40">40 px/u (éloigné)</option>
+          <option value="60" selected>60 px/u (normal)</option>
+          <option value="80">80 px/u (proche)</option>
+          <option value="100">100 px/u (très proche)</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Couleur des objets référence</label>
+        <input type="color" id="opt-ref-color" value="#f38ba8">
+      </div>
+    </div>
+
+    <div class="panel-section" style="flex:1">
+      <h3>À propos</h3>
+      <p style="font-size:11px;color:var(--text-muted);line-height:1.6">
+        Dessinez les objets de référence sur le canvas central.<br>
+        Chaque question peut avoir ses propres objets et zones actives.<br>
+        Cliquez <strong>Exporter .js</strong> pour générer le fichier exercice compatible avec l'application principale.
+      </p>
+    </div>
+  </div>
+
+  <!-- ── CENTER: Canvas ── -->
+  <div id="center-panel">
+    <div id="canvas-toolbar">
+      <!-- Mode tools -->
+      <button class="ctool-btn active" data-mode="select" title="Sélectionner / Déplacer (S)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 2l16 9-7 2-3 7z"/></svg>
+        Sélect.
+      </button>
+      <button class="ctool-btn" data-mode="point" title="Ajouter un point (P)">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5" fill="currentColor"/></svg>
+        Point
+      </button>
+      <button class="ctool-btn" data-mode="segment" title="Tracer un segment (G)">
+        <svg viewBox="0 0 24 24"><circle cx="4" cy="20" r="3" fill="currentColor"/><circle cx="20" cy="4" r="3" fill="currentColor"/><line x1="4" y1="20" x2="20" y2="4" stroke="currentColor" stroke-width="2"/></svg>
+        Segment
+      </button>
+      <button class="ctool-btn" data-mode="delete" title="Supprimer (Del)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3,6 5,6 21,6"/><path d="M19,6l-1,14H6L5,6"/></svg>
+        Suppr.
+      </button>
+
+      <div class="ctool-sep"></div>
+
+      <!-- Grid / axes toggles -->
+      <button class="ctool-btn active" id="btn-toggle-grid" title="Grille (G)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        Grille
+      </button>
+      <button class="ctool-btn active" id="btn-toggle-axes" title="Axes (A)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>
+        Axes
+      </button>
+
+      <div class="ctool-sep"></div>
+
+      <!-- Zoom -->
+      <button class="ctool-btn" id="btn-zoom-in">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16" y2="16"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+        +
+      </button>
+      <button class="ctool-btn" id="btn-zoom-out">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16" y2="16"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+        −
+      </button>
+      <button class="ctool-btn" id="btn-zoom-fit">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v4H3M15 3v4h6M9 21v-4H3M15 21v-4h6"/></svg>
+        Ajuster
+      </button>
+
+      <div style="flex:1"></div>
+
+      <!-- Current question indicator -->
+      <span id="canvas-q-label" style="font-size:11px;color:var(--accent);font-weight:700;padding:0 8px">
+        Q1
+      </span>
+    </div>
+
+    <canvas id="editor-canvas"></canvas>
+    <div id="canvas-info">x = 0.00 · y = 0.00</div>
+    <div id="canvas-hint"></div>
+  </div>
+
+  <!-- ── RIGHT: Questions ── -->
+  <div id="right-panel">
+    <div id="questions-header">
+      <h3>Questions</h3>
+      <button id="btn-add-question">+ Ajouter</button>
+    </div>
+
+    <div id="questions-list"></div>
+
+    <div id="question-editor">
+      <div class="no-q">Sélectionnez ou créez une question.</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- JSON preview modal -->
+<div id="json-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:500;align-items:center;justify-content:center">
+  <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;width:600px;max-height:80vh;display:flex;flex-direction:column;padding:20px;gap:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <h3 style="font-size:14px">Aperçu JSON</h3>
+      <button id="json-modal-close" style="background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer">✕</button>
+    </div>
+    <pre id="json-preview" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:12px;overflow:auto;font-size:11px;flex:1;color:var(--success)"></pre>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ══════════════════════════════════════════════════════
+// EXERCISE DATA MODEL
+// ══════════════════════════════════════════════════════
+
+const exerciseData = {
+  title: '',
+  globalInstructions: '',
+  imageUrl: '',
+  totalQuestions: 1,
+  refColor: '#f38ba8',
+  gridUnit: 1,
+  initialZoom: 60,
+  questions: []  // array of Question objects
+};
+
+// Question shape:
+// { id, num, instructions, activeZones: Set, refObjects: [] }
+// refObject: { type:'point'|'segment', ...coords, id }
+
+let nextObjId = 1;
+let currentQuestionId = null;
+
+// ── Zone definitions ──────────────────────────────
+const ZONE_IDS = ['zone-top', 'zone-center', 'zone-left', 'zone-bottom', 'zone-right'];
+const ZONE_LABELS = {
+  'zone-top': 'Dessus', 'zone-center': 'Face',
+  'zone-left': 'Gauche', 'zone-bottom': 'Dessous', 'zone-right': 'Droite'
+};
+// Zone position in the 3x3 grid (row, col) 0-indexed
+const ZONE_GRID = {
+  'zone-top':    { row: 0, col: 1 },
+  'zone-left':   { row: 1, col: 0 },
+  'zone-center': { row: 1, col: 1 },
+  'zone-right':  { row: 1, col: 2 },
+  'zone-bottom': { row: 2, col: 1 }
+};
+
+// ── Helpers ───────────────────────────────────────
+function genId() { return ++nextObjId; }
+function currentQuestion() { return exerciseData.questions.find(q => q.id === currentQuestionId) || null; }
+
+// ══════════════════════════════════════════════════════
+// MINI CANVAS ENGINE
+// ══════════════════════════════════════════════════════
+
+const canvas = document.getElementById('editor-canvas');
+const ctx = canvas.getContext('2d');
+
+const edState = {
+  tool: 'select',
+  objects: [],      // shared across all questions? No — per question
+  scale: 60,
+  ox: 0, oy: 0,
+  showGrid: true,
+  showAxes: true,
+  isPanning: false,
+  panStart: null,
+  isDragging: false,
+  dragTarget: null,
+  dragOffset: null,
+  hover: null,
+  tempPoints: [],   // for segment tool
+  selected: null    // selected object id
+};
+
+function w2c(wx, wy) {
+  return {
+    x: canvas.width / 2 + (wx - edState.ox) * edState.scale,
+    y: canvas.height / 2 - (wy - edState.oy) * edState.scale
+  };
+}
+
+function c2w(cx, cy) {
+  return {
+    x: edState.ox + (cx - canvas.width / 2) / edState.scale,
+    y: edState.oy - (cy - canvas.height / 2) / edState.scale
+  };
+}
+
+function snapW(wx, wy) {
+  const unit = parseFloat(document.getElementById('opt-grid').value) || 1;
+  return { x: Math.round(wx / unit) * unit, y: Math.round(wy / unit) * unit };
+}
+
+function getRefObjects() {
+  const q = currentQuestion();
+  return q ? q.refObjects : [];
+}
+
+// ── Hit testing ───────────────────────────────────
+const HIT = 8;
+
+function hitPoint(obj, cx, cy) {
+  const c = w2c(obj.x, obj.y);
+  return Math.hypot(cx - c.x, cy - c.y) <= HIT;
+}
+
+function hitSegment(obj, cx, cy) {
+  const p1 = w2c(obj.x1, obj.y1), p2 = w2c(obj.x2, obj.y2);
+  const dx = p2.x - p1.x, dy = p2.y - p1.y;
+  const len2 = dx*dx + dy*dy;
+  if (len2 < 1e-6) return Math.hypot(cx - p1.x, cy - p1.y) <= HIT;
+  const t = Math.max(0, Math.min(1, ((cx-p1.x)*dx + (cy-p1.y)*dy) / len2));
+  return Math.hypot(cx - (p1.x + t*dx), cy - (p1.y + t*dy)) <= HIT;
+}
+
+function objectAt(cx, cy) {
+  const objs = getRefObjects();
+  for (let i = objs.length - 1; i >= 0; i--) {
+    const o = objs[i];
+    if (o.type === 'point' && hitPoint(o, cx, cy)) return o;
+    if (o.type === 'segment' && hitSegment(o, cx, cy)) return o;
+  }
+  return null;
+}
+
+// ── Render ────────────────────────────────────────
+function render() {
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fillRect(0, 0, W, H);
+
+  // Grid
+  if (edState.showGrid) {
+    const unit = parseFloat(document.getElementById('opt-grid').value) || 1;
+    const step = unit * edState.scale;
+    if (step > 8) {
+      ctx.strokeStyle = 'rgba(63,63,90,.5)';
+      ctx.lineWidth = 1;
+      const cx = w2c(0, 0);
+      const startX = cx.x % step;
+      for (let x = startX; x < W; x += step) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+      const startY = cx.y % step;
+      for (let y = startY; y < H; y += step) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+    }
+  }
+
+  // Axes
+  if (edState.showAxes) {
+    const o = w2c(0, 0);
+    ctx.strokeStyle = 'rgba(127,132,156,.5)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, o.y); ctx.lineTo(W, o.y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(o.x, 0); ctx.lineTo(o.x, H); ctx.stroke();
+  }
+
+  const color = document.getElementById('opt-ref-color').value;
+
+  // Ref objects for current question
+  const objs = getRefObjects();
+  for (const obj of objs) {
+    const isSelected = edState.selected === obj.id;
+    const isHover = edState.hover === obj.id;
+
+    ctx.save();
+    if (obj.type === 'point') {
+      const c = w2c(obj.x, obj.y);
+      ctx.fillStyle = isSelected ? '#fff' : isHover ? color + 'dd' : color;
+      if (isSelected) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(c.x, c.y, 7, 0, Math.PI*2); ctx.stroke();
+      }
+      ctx.beginPath(); ctx.arc(c.x, c.y, 5, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#cdd6f4';
+      ctx.font = '11px Segoe UI';
+      ctx.fillText(obj.label, c.x + 7, c.y - 5);
+
+    } else if (obj.type === 'segment') {
+      const p1 = w2c(obj.x1, obj.y1), p2 = w2c(obj.x2, obj.y2);
+      ctx.strokeStyle = isSelected ? '#fff' : isHover ? color + 'dd' : color;
+      ctx.lineWidth = isSelected ? 3 : 2;
+      ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+      // endpoint dots
+      ctx.fillStyle = ctx.strokeStyle;
+      ctx.beginPath(); ctx.arc(p1.x, p1.y, 4, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(p2.x, p2.y, 4, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // Temp point for segment tool
+  if (edState.tempPoints.length > 0 && edState.tool === 'segment') {
+    const tp = edState.tempPoints[0];
+    const c = w2c(tp.x, tp.y);
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(c.x, c.y, 5, 0, Math.PI*2); ctx.fill();
+    if (edState._mousePos) {
+      const mp = w2c(edState._mousePos.x, edState._mousePos.y);
+      ctx.strokeStyle = color + '80';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.lineTo(mp.x, mp.y); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+}
+
+// ── Canvas events ─────────────────────────────────
+let pointLabelCounter = 0;
+function nextPointLabel() {
+  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const i = pointLabelCounter % 26;
+  const n = Math.floor(pointLabelCounter / 26);
+  pointLabelCounter++;
+  return letters[i] + (n > 0 ? String(n) : '');
+}
+
+function resizeCanvas() {
+  const container = document.getElementById('center-panel');
+  const tb = document.getElementById('canvas-toolbar');
+  canvas.width = container.clientWidth;
+  canvas.height = container.clientHeight - tb.offsetHeight;
+  render();
+}
+
+window.addEventListener('resize', resizeCanvas);
+
+canvas.addEventListener('mousemove', e => {
+  const rect = canvas.getBoundingClientRect();
+  const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+  const w = c2w(cx, cy);
+  document.getElementById('canvas-info').textContent = `x = ${w.x.toFixed(2)} · y = ${w.y.toFixed(2)}`;
+
+  // Store mouse pos for rubber-band line
+  edState._mousePos = edState.showGrid ? snapW(w.x, w.y) : w;
+
+  // Panning
+  if (edState.isPanning && edState.panStart) {
+    edState.ox -= (cx - edState.panStart.cx) / edState.scale;
+    edState.oy += (cy - edState.panStart.cy) / edState.scale;
+    edState.panStart = { cx, cy };
+    render(); return;
+  }
+
+  // Dragging
+  if (edState.isDragging && edState.dragTarget) {
+    const snapped = edState.showGrid ? snapW(w.x, w.y) : w;
+    const obj = edState.dragTarget;
+    if (obj.type === 'point') {
+      obj.x = snapped.x - edState.dragOffset.dx;
+      obj.y = snapped.y - edState.dragOffset.dy;
+    } else if (obj.type === 'segment') {
+      const dx = snapped.x - edState.dragOffset.x;
+      const dy = snapped.y - edState.dragOffset.y;
+      obj.x1 = edState.dragOffset.x1 + dx;
+      obj.y1 = edState.dragOffset.y1 + dy;
+      obj.x2 = edState.dragOffset.x2 + dx;
+      obj.y2 = edState.dragOffset.y2 + dy;
+    }
+    syncRefObjPanel();
+    render(); return;
+  }
+
+  // Hover
+  const hit = objectAt(cx, cy);
+  edState.hover = hit ? hit.id : null;
+  canvas.style.cursor = edState.tool === 'select'
+    ? (hit ? 'pointer' : 'default')
+    : edState.tool === 'delete' ? (hit ? 'crosshair' : 'not-allowed')
+    : 'crosshair';
+  render();
+});
+
+canvas.addEventListener('mousedown', e => {
+  const rect = canvas.getBoundingClientRect();
+  const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+  const w = c2w(cx, cy);
+
+  // Middle button or space+drag → pan
+  if (e.button === 1 || (e.button === 0 && e.altKey)) {
+    edState.isPanning = true;
+    edState.panStart = { cx, cy };
+    e.preventDefault(); return;
+  }
+
+  if (e.button !== 0) return;
+
+  const snapped = snapW(w.x, w.y);
+
+  if (edState.tool === 'select') {
+    const hit = objectAt(cx, cy);
+    if (hit) {
+      edState.selected = hit.id;
+      edState.isDragging = true;
+      if (hit.type === 'point') {
+        edState.dragTarget = hit;
+        edState.dragOffset = { dx: snapped.x - hit.x, dy: snapped.y - hit.y };
+      } else if (hit.type === 'segment') {
+        edState.dragTarget = hit;
+        edState.dragOffset = { x: snapped.x, y: snapped.y, x1: hit.x1, y1: hit.y1, x2: hit.x2, y2: hit.y2 };
+      }
+    } else {
+      edState.selected = null;
+    }
+    syncRefObjPanel();
+    render(); return;
+  }
+
+  if (edState.tool === 'delete') {
+    const hit = objectAt(cx, cy);
+    if (hit) removeRefObject(hit.id);
+    return;
+  }
+
+  if (edState.tool === 'point') {
+    if (!currentQuestion()) { showHint('Créez d\'abord une question →'); return; }
+    addRefPoint(snapped.x, snapped.y);
+    return;
+  }
+
+  if (edState.tool === 'segment') {
+    if (!currentQuestion()) { showHint('Créez d\'abord une question →'); return; }
+    if (edState.tempPoints.length === 0) {
+      edState.tempPoints.push({ x: snapped.x, y: snapped.y });
+      showHint('Cliquez pour placer le 2ème point · Échap pour annuler');
+    } else {
+      const p1 = edState.tempPoints[0];
+      addRefSegment(p1.x, p1.y, snapped.x, snapped.y);
+      edState.tempPoints = [];
+      hideHint();
+    }
+    render(); return;
+  }
+});
+
+canvas.addEventListener('mouseup', () => {
+  edState.isDragging = false;
+  edState.dragTarget = null;
+  edState.isPanning = false;
+});
+
+canvas.addEventListener('mouseleave', () => {
+  edState._mousePos = null;
+  edState.hover = null;
+  render();
+});
+
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+  edState.scale = Math.max(10, Math.min(400, edState.scale * factor));
+  render();
+}, { passive: false });
+
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { edState.tempPoints = []; hideHint(); render(); }
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    if (edState.selected && document.activeElement === document.body) {
+      removeRefObject(edState.selected);
+      edState.selected = null;
+    }
+  }
+});
+
+// Keyboard shortcuts for tools
+document.addEventListener('keydown', e => {
+  if (document.activeElement !== document.body && document.activeElement !== canvas) return;
+  const map = { s: 'select', p: 'point', g: 'segment', d: 'delete' };
+  if (map[e.key.toLowerCase()]) setTool(map[e.key.toLowerCase()]);
+});
+
+function showHint(msg) {
+  const el = document.getElementById('canvas-hint');
+  el.textContent = msg;
+  el.classList.add('visible');
+}
+function hideHint() {
+  document.getElementById('canvas-hint').classList.remove('visible');
+}
+
+// ── Tool buttons ──────────────────────────────────
+function setTool(tool) {
+  edState.tool = tool;
+  edState.tempPoints = [];
+  document.querySelectorAll('[data-mode]').forEach(b => b.classList.remove('active'));
+  const btn = document.querySelector(`[data-mode="${tool}"]`);
+  if (btn) btn.classList.add('active');
+  hideHint();
+  render();
+}
+
+document.querySelectorAll('[data-mode]').forEach(btn => {
+  btn.addEventListener('click', () => setTool(btn.dataset.mode));
+});
+
+document.getElementById('btn-toggle-grid').addEventListener('click', function() {
+  edState.showGrid = !edState.showGrid;
+  this.classList.toggle('active', edState.showGrid);
+  render();
+});
+
+document.getElementById('btn-toggle-axes').addEventListener('click', function() {
+  edState.showAxes = !edState.showAxes;
+  this.classList.toggle('active', edState.showAxes);
+  render();
+});
+
+document.getElementById('btn-zoom-in').addEventListener('click', () => {
+  edState.scale = Math.min(400, edState.scale * 1.3); render();
+});
+document.getElementById('btn-zoom-out').addEventListener('click', () => {
+  edState.scale = Math.max(10, edState.scale / 1.3); render();
+});
+document.getElementById('btn-zoom-fit').addEventListener('click', () => {
+  edState.ox = 0; edState.oy = 0; edState.scale = 60; render();
+});
+
+document.getElementById('opt-ref-color').addEventListener('input', () => render());
+document.getElementById('opt-grid').addEventListener('change', () => render());
+document.getElementById('opt-zoom').addEventListener('change', function() {
+  edState.scale = parseInt(this.value); render();
+});
+
+// ══════════════════════════════════════════════════════
+// REF OBJECT MANAGEMENT
+// ══════════════════════════════════════════════════════
+
+function addRefPoint(x, y) {
+  const q = currentQuestion();
+  if (!q) return;
+  const label = nextPointLabel();
+  const obj = { type: 'point', id: genId(), label, x, y };
+  q.refObjects.push(obj);
+  syncRefObjPanel();
+  syncQuestionList();
+  render();
+}
+
+function addRefSegment(x1, y1, x2, y2) {
+  const q = currentQuestion();
+  if (!q) return;
+  const label = 's' + (q.refObjects.filter(o => o.type === 'segment').length + 1);
+  const obj = { type: 'segment', id: genId(), label, x1, y1, x2, y2 };
+  q.refObjects.push(obj);
+  syncRefObjPanel();
+  syncQuestionList();
+  render();
+}
+
+function removeRefObject(id) {
+  const q = currentQuestion();
+  if (!q) return;
+  q.refObjects = q.refObjects.filter(o => o.id !== id);
+  if (edState.selected === id) edState.selected = null;
+  syncRefObjPanel();
+  syncQuestionList();
+  render();
+}
+
+// ══════════════════════════════════════════════════════
+// QUESTION MANAGEMENT
+// ══════════════════════════════════════════════════════
+
+let questionCounter = 0;
+
+function addQuestion() {
+  questionCounter++;
+  const q = {
+    id: genId(),
+    num: questionCounter,
+    instructions: '',
+    activeZones: new Set(['zone-center']),
+    tolerance: 0.5,
+    refObjects: []
+  };
+  exerciseData.questions.push(q);
+  selectQuestion(q.id);
+  syncQuestionList();
+  syncTotalQuestions();
+}
+
+function deleteQuestion(id) {
+  const idx = exerciseData.questions.findIndex(q => q.id === id);
+  if (idx < 0) return;
+  exerciseData.questions.splice(idx, 1);
+  // Re-number
+  exerciseData.questions.forEach((q, i) => q.num = i + 1);
+  if (currentQuestionId === id) {
+    const next = exerciseData.questions[Math.min(idx, exerciseData.questions.length - 1)];
+    currentQuestionId = next ? next.id : null;
+  }
+  syncQuestionList();
+  renderQuestionEditor();
+  syncTotalQuestions();
+}
+
+function selectQuestion(id) {
+  currentQuestionId = id;
+  syncQuestionList();
+  renderQuestionEditor();
+  // Update canvas label
+  const q = currentQuestion();
+  document.getElementById('canvas-q-label').textContent = q ? 'Q' + q.num : '';
+  render();
+}
+
+function syncTotalQuestions() {
+  exerciseData.totalQuestions = exerciseData.questions.length;
+  document.getElementById('ex-total-questions').value = exerciseData.questions.length;
+}
+
+// ── Question list UI ──────────────────────────────
+function syncQuestionList() {
+  const list = document.getElementById('questions-list');
+  list.innerHTML = '';
+  exerciseData.questions.forEach(q => {
+    const div = document.createElement('div');
+    div.className = 'q-item' + (q.id === currentQuestionId ? ' active' : '');
+    div.innerHTML = `
+      <span class="q-item-num">Q${q.num}</span>
+      <span class="q-item-title">${q.instructions || '(sans consigne)'}</span>
+      <span class="q-item-obj-count">${q.refObjects.length} obj.</span>
+      <button class="q-delete" title="Supprimer">✕</button>
+    `;
+    div.addEventListener('click', e => {
+      if (e.target.classList.contains('q-delete')) { deleteQuestion(q.id); return; }
+      selectQuestion(q.id);
+    });
+    list.appendChild(div);
+  });
+}
+
+// ── Question editor UI ────────────────────────────
+function renderQuestionEditor() {
+  const editor = document.getElementById('question-editor');
+  const q = currentQuestion();
+
+  if (!q) {
+    editor.innerHTML = '<div class="no-q">Sélectionnez ou créez une question.</div>';
+    return;
+  }
+
+  editor.innerHTML = `
+    <h4>Question ${q.num}</h4>
+
+    <div class="form-row">
+      <label>Consigne de la question</label>
+      <textarea id="q-instructions" rows="3" placeholder="Ex : Tracez la vue de face du solide.">${q.instructions}</textarea>
+    </div>
+
+    <div class="form-row">
+      <label>Tolérance de distance (unités)</label>
+      <div class="tolerance-row">
+        <input type="number" id="q-tolerance" value="${q.tolerance}" min="0.05" max="5" step="0.05" style="width:80px">
+        <span style="font-size:11px;color:var(--text-muted)">unités monde</span>
+      </div>
+    </div>
+
+    <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">Zones orthographiques actives</label>
+    <div class="zone-checks" id="zone-checks-grid">
+      ${buildZoneChecks(q)}
+    </div>
+
+    <h4 style="margin-top:4px">Objets de référence</h4>
+    <div id="ref-objects-list">
+      ${buildRefObjList(q)}
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
+      <button class="tag-btn" id="q-add-point">+ Point</button>
+      <button class="tag-btn" id="q-add-segment">+ Segment</button>
+      <button class="tag-btn" id="q-clear-objs" style="color:var(--danger)">✕ Tout effacer</button>
+    </div>
+  `;
+
+  // Wire inputs
+  document.getElementById('q-instructions').addEventListener('input', function() {
+    q.instructions = this.value;
+    syncQuestionList();
+  });
+
+  document.getElementById('q-tolerance').addEventListener('input', function() {
+    q.tolerance = parseFloat(this.value) || 0.5;
+  });
+
+  document.querySelectorAll('.zone-cb').forEach(cb => {
+    cb.addEventListener('change', function() {
+      if (this.checked) q.activeZones.add(this.value);
+      else q.activeZones.delete(this.value);
+    });
+  });
+
+  document.querySelectorAll('.ref-obj-del-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      removeRefObject(parseInt(btn.dataset.id));
+      renderQuestionEditor();
+    });
+  });
+
+  document.getElementById('q-add-point').addEventListener('click', () => {
+    setTool('point');
+    showHint('Cliquez sur le canvas pour placer un point de référence');
+  });
+
+  document.getElementById('q-add-segment').addEventListener('click', () => {
+    setTool('segment');
+    showHint('Cliquez pour placer le 1er point du segment de référence');
+  });
+
+  document.getElementById('q-clear-objs').addEventListener('click', () => {
+    if (!confirm('Supprimer tous les objets de référence de cette question ?')) return;
+    q.refObjects = [];
+    syncRefObjPanel();
+    syncQuestionList();
+    render();
+  });
+}
+
+function buildZoneChecks(q) {
+  // Build a 3x3 grid string. Positions:
+  // row0: _, top, _
+  // row1: left, center, right
+  // row2: _, bottom, _
+  const grid = [
+    [null,          'zone-top',    null        ],
+    ['zone-left',   'zone-center', 'zone-right'],
+    [null,          'zone-bottom', null        ]
+  ];
+
+  let html = '';
+  for (const row of grid) {
+    for (const zoneId of row) {
+      if (!zoneId) {
+        html += `<div style="aspect-ratio:1"></div>`;
+      } else {
+        const checked = q.activeZones.has(zoneId) ? 'checked' : '';
+        html += `
+          <label class="zone-check">
+            <input type="checkbox" class="zone-cb" value="${zoneId}" ${checked}>
+            ${ZONE_LABELS[zoneId]}
+          </label>`;
+      }
+    }
+  }
+  return html;
+}
+
+function buildRefObjList(q) {
+  if (q.refObjects.length === 0) {
+    return '<div class="empty-objects">Aucun objet — dessinez sur le canvas ou cliquez sur + ci-dessous.</div>';
+  }
+  return q.refObjects.map(obj => {
+    const icon = obj.type === 'point' ? '•' : '—';
+    const coords = obj.type === 'point'
+      ? `(${obj.x.toFixed(2)}, ${obj.y.toFixed(2)})`
+      : `(${obj.x1.toFixed(2)},${obj.y1.toFixed(2)}) → (${obj.x2.toFixed(2)},${obj.y2.toFixed(2)})`;
+    return `<div class="ref-obj-item">
+      <span class="ref-obj-icon">${icon}</span>
+      <span style="font-weight:600;min-width:24px;font-size:11px">${obj.label}</span>
+      <span class="ref-obj-coords">${coords}</span>
+      <button class="ref-obj-del ref-obj-del-btn" data-id="${obj.id}" title="Supprimer">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function syncRefObjPanel() {
+  const listEl = document.getElementById('ref-objects-list');
+  if (!listEl) return;
+  const q = currentQuestion();
+  listEl.innerHTML = q ? buildRefObjList(q) : '';
+  if (listEl) {
+    listEl.querySelectorAll('.ref-obj-del-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        removeRefObject(parseInt(btn.dataset.id));
+        renderQuestionEditor();
+      });
+    });
+  }
+  syncQuestionList();
+}
+
+// ══════════════════════════════════════════════════════
+// LEFT PANEL SYNC
+// ══════════════════════════════════════════════════════
+
+document.getElementById('ex-title').addEventListener('input', function() {
+  exerciseData.title = this.value;
+});
+
+document.getElementById('ex-global-instructions').addEventListener('input', function() {
+  exerciseData.globalInstructions = this.value;
+});
+
+document.getElementById('ex-image-url').addEventListener('input', function() {
+  exerciseData.imageUrl = this.value;
+  const img = document.getElementById('ex-image-preview');
+  if (this.value) { img.src = this.value; img.style.display = 'block'; }
+  else img.style.display = 'none';
+});
+
+document.getElementById('ex-image-file').addEventListener('change', function() {
+  const file = this.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    exerciseData.imageUrl = e.target.result;
+    document.getElementById('ex-image-url').value = '(fichier local)';
+    const img = document.getElementById('ex-image-preview');
+    img.src = e.target.result;
+    img.style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+});
+
+document.getElementById('btn-add-question').addEventListener('click', addQuestion);
+
+// ══════════════════════════════════════════════════════
+// JS EXPORT
+// ══════════════════════════════════════════════════════
+
+function buildExerciseData() {
+  return {
+    title: exerciseData.title || 'Exercice sans titre',
+    globalInstructions: exerciseData.globalInstructions,
+    imageUrl: exerciseData.imageUrl,
+    totalQuestions: exerciseData.questions.length,
+    initialZoom: parseInt(document.getElementById('opt-zoom').value) || 60,
+    questions: exerciseData.questions.map(q => ({
+      num: q.num,
+      instructions: q.instructions,
+      activeZones: [...q.activeZones],
+      tolerance: q.tolerance,
+      refPoints: q.refObjects.filter(o => o.type === 'point').map(o => ({ label: o.label, x: o.x, y: o.y })),
+      refSegments: q.refObjects.filter(o => o.type === 'segment').map(o => ({ label: o.label, x1: o.x1, y1: o.y1, x2: o.x2, y2: o.y2 }))
+    }))
+  };
+}
+
+function generateJS(data) {
+  const dataJson = JSON.stringify(data, null, 2);
+
+  return `// Exercice généré par l'Éditeur d'exercices — Géométrie
+// Titre : ${data.title}
+// Questions : ${data.totalQuestions}
+(function() {
+  'use strict';
+
+  const EXERCISE = ${dataJson};
+
+  let currentQIdx = 0;
+  let score = 0;
+
+  // Track student-added objects for validation
+  const studentObjects = {};
+  geoApp.registerAddListener(function(name) {
+    studentObjects[name] = true;
+    geoApp.registerObjectUpdateListener(name, function() {
+      // coords updated live via getAllObjects()
+    });
+  });
+
+  function dist2d(ax, ay, bx, by) {
+    return Math.sqrt((bx - ax) * (bx - ax) + (by - ay) * (by - ay));
+  }
+
+  function clearStudentObjects() {
+    const all = geoApp.getAllObjects();
+    all.forEach(function(obj) {
+      if (!obj.fixed) geoApp.deleteObject(obj.label);
+    });
+    for (const k in studentObjects) delete studentObjects[k];
+  }
+
+  function loadQuestion(idx) {
+    const q = EXERCISE.questions[idx];
+    if (!q) return;
+
+    clearStudentObjects();
+    geoApp.setQuestion(q.num, EXERCISE.totalQuestions);
+    geoApp.setInstructions(q.instructions || EXERCISE.globalInstructions);
+
+    // Reset zones
+    ['zone-top','zone-center','zone-left','zone-bottom','zone-right'].forEach(function(z) {
+      geoApp.setZoneState(z, 'neutral');
+    });
+    if (q.activeZones && q.activeZones.length > 0) {
+      q.activeZones.forEach(function(z) { geoApp.setZoneState(z, 'active'); });
+      geoApp.showZones();
+    } else {
+      geoApp.hideZones();
+    }
+
+    // Place reference objects (fixed, invisible) — used only for visual debugging
+    // In production these are hidden; set visible:true to show the answer
+    q.refPoints.forEach(function(p) {
+      geoApp.evalCommand('__ref_' + p.label + ' = Point(' + p.x + ', ' + p.y + ')');
+      geoApp.setFixed('__ref_' + p.label, true);
+      geoApp.setVisible('__ref_' + p.label, false);
+    });
+  }
+
+  function validateQuestion() {
+    const q = EXERCISE.questions[currentQIdx];
+    if (!q) return;
+
+    const all = geoApp.getAllObjects();
+    const studentPts = all.filter(function(o) {
+      return (o.type === 'point' || o.type === 'midpoint') && !o.fixed && !o.label.startsWith('__ref_');
+    });
+    const studentSegs = all.filter(function(o) {
+      return o.type === 'segment' && !o.fixed && !o.label.startsWith('__ref_');
+    });
+
+    const tol = q.tolerance || 0.5;
+    let correct = 0;
+    const total = q.refPoints.length + q.refSegments.length;
+
+    // Check expected points
+    q.refPoints.forEach(function(ref) {
+      const matched = studentPts.some(function(s) {
+        return dist2d(s.x, s.y, ref.x, ref.y) <= tol;
+      });
+      if (matched) correct++;
+    });
+
+    // Check expected segments (both orientations)
+    q.refSegments.forEach(function(ref) {
+      const matched = studentSegs.some(function(s) {
+        if (!s.p1 || !s.p2) return false;
+        const fwd = dist2d(s.p1.x, s.p1.y, ref.x1, ref.y1) <= tol
+                 && dist2d(s.p2.x, s.p2.y, ref.x2, ref.y2) <= tol;
+        const rev = dist2d(s.p1.x, s.p1.y, ref.x2, ref.y2) <= tol
+                 && dist2d(s.p2.x, s.p2.y, ref.x1, ref.y1) <= tol;
+        return fwd || rev;
+      });
+      if (matched) correct++;
+    });
+
+    const questionCorrect = total === 0 || correct === total;
+
+    // Update zone states
+    if (q.activeZones && q.activeZones.length > 0) {
+      const zoneState = questionCorrect ? 'correct' : 'error';
+      q.activeZones.forEach(function(z) { geoApp.setZoneState(z, zoneState); });
+    }
+
+    if (questionCorrect) {
+      score++;
+    }
+
+    geoApp.updateScore(score, EXERCISE.totalQuestions);
+    return questionCorrect;
+  }
+
+  // ── Register callbacks ────────────────────────────
+  geoVars['__onValidate'] = function() {
+    validateQuestion();
+  };
+
+  geoVars['__onNext'] = function() {
+    if (currentQIdx < EXERCISE.questions.length - 1) {
+      currentQIdx++;
+      loadQuestion(currentQIdx);
+    }
+  };
+
+  geoVars['__onReset'] = function() {
+    currentQIdx = 0;
+    score = 0;
+    loadQuestion(0);
+    geoApp.updateScore(0, EXERCISE.totalQuestions);
+    ['zone-top','zone-center','zone-left','zone-bottom','zone-right'].forEach(function(z) {
+      geoApp.setZoneState(z, 'neutral');
+    });
+  };
+
+  // ── Initial setup ─────────────────────────────────
+  geoApp.setupExercise({
+    title: EXERCISE.title,
+    instructions: EXERCISE.questions.length > 0 ? EXERCISE.questions[0].instructions : EXERCISE.globalInstructions,
+    imageUrl: EXERCISE.imageUrl,
+    totalQuestions: EXERCISE.totalQuestions
+  });
+
+  if (EXERCISE.initialZoom) {
+    geoApp.evalCommand('ZoomIn');
+  }
+
+  if (EXERCISE.questions.length > 0) {
+    loadQuestion(0);
+  }
+
+})();
+`;
+}
+
+document.getElementById('btn-export').addEventListener('click', () => {
+  if (exerciseData.questions.length === 0) {
+    alert('Ajoutez au moins une question avant d\'exporter.');
+    return;
+  }
+  const data = buildExerciseData();
+  const code = generateJS(data);
+  const blob = new Blob([code], { type: 'text/javascript' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const safeName = (exerciseData.title || 'exercice')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+  a.download = safeName + '.js';
+  a.href = url;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+document.getElementById('btn-preview-json').addEventListener('click', () => {
+  const data = buildExerciseData();
+  document.getElementById('json-preview').textContent = JSON.stringify(data, null, 2);
+  document.getElementById('json-modal').style.display = 'flex';
+});
+
+document.getElementById('json-modal-close').addEventListener('click', () => {
+  document.getElementById('json-modal').style.display = 'none';
+});
+
+document.getElementById('json-modal').addEventListener('click', function(e) {
+  if (e.target === this) this.style.display = 'none';
+});
+
+// ══════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════
+resizeCanvas();
+// Start with one question by default
+addQuestion();
+</script>
+</body>
+</html>

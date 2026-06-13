@@ -217,6 +217,57 @@
     </div>
   </div>
 
+  <!-- Panneau exercice (côté droit fixe) -->
+  <div id="exercise-panel" class="hidden">
+    <div id="ex-header">
+      <span id="ex-title">Exercice</span>
+      <div id="ex-meta">
+        <span id="ex-question-num">-</span>
+        <span id="ex-score-label">Score :</span>
+        <span id="ex-score">0 / 0</span>
+      </div>
+      <label id="ex-load-btn" title="Charger un exercice (.js)">
+        ⬆ Charger
+        <input type="file" id="ex-file-input" accept=".js" style="display:none">
+      </label>
+    </div>
+
+    <div id="ex-instructions">Chargez un exercice pour commencer.</div>
+
+    <img id="ex-ref-image" src="" alt="Référence" style="display:none">
+
+    <!-- Grille orthographique 3×3 -->
+    <div id="ex-zones" style="display:none">
+      <div class="ortho-grid">
+        <div class="ortho-cell"></div>
+        <div class="ortho-cell ortho-zone zone-state-neutral" id="zone-top">
+          <span class="zone-label">Dessus</span>
+        </div>
+        <div class="ortho-cell"></div>
+        <div class="ortho-cell ortho-zone zone-state-neutral" id="zone-left">
+          <span class="zone-label">Gauche</span>
+        </div>
+        <div class="ortho-cell ortho-zone zone-state-neutral" id="zone-center">
+          <span class="zone-label">Face</span>
+        </div>
+        <div class="ortho-cell ortho-zone zone-state-neutral" id="zone-right">
+          <span class="zone-label">Droite</span>
+        </div>
+        <div class="ortho-cell"></div>
+        <div class="ortho-cell ortho-zone zone-state-neutral" id="zone-bottom">
+          <span class="zone-label">Dessous</span>
+        </div>
+        <div class="ortho-cell"></div>
+      </div>
+    </div>
+
+    <div id="ex-actions">
+      <button id="ex-btn-validate" class="ex-btn ex-btn-primary">✔ Valider</button>
+      <button id="ex-btn-next" class="ex-btn">Suivant →</button>
+      <button id="ex-btn-reset" class="ex-btn ex-btn-danger">↺ Réinit.</button>
+    </div>
+  </div>
+
   <!-- Dialogue de propriétés -->
   <div id="properties-panel" class="hidden">
     <div id="properties-header">
