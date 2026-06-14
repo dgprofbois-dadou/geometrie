@@ -1883,7 +1883,8 @@ function serializeState() {
       tolerance: q.tolerance,
       pointsPerCorrect: q.pointsPerCorrect ?? 1,
       geoState: q.geoState || [],
-      roleMap: q.roleMap || {}
+      roleMap: q.roleMap || {},
+      figureGroups: q.figureGroups || []
     })),
     currentQuestionId,
     nextObjId
@@ -1919,7 +1920,8 @@ function deserializeState(data) {
     tolerance: q.tolerance || 0.5,
     pointsPerCorrect: q.pointsPerCorrect ?? 1,
     geoState: q.geoState || [],
-    roleMap: q.roleMap || {}
+    roleMap: q.roleMap || {},
+    figureGroups: q.figureGroups || []
   }));
 
   questionCounter = exerciseData.questions.length;
