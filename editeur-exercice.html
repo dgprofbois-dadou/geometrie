@@ -447,6 +447,41 @@
     }
     .tag-btn:hover { border-color: var(--accent); color: var(--accent); }
 
+    /* ── Panneau propriétés objet ── */
+    #obj-props-panel {
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      background: var(--surface2);
+    }
+    #obj-props-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 7px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    #obj-props-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent2);
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    #obj-props-close {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 13px;
+    }
+    #obj-props-close:hover { color: var(--danger); }
+    #obj-props-body {
+      padding: 8px 12px;
+    }
+    #obj-props-body .form-row {
+      margin-bottom: 7px;
+    }
+
     /* ── Boutons rôle / style ── */
     .role-btn, .ls-btn {
       padding: 2px 6px;
@@ -622,6 +657,62 @@
     </div>
 
     <div id="questions-list"></div>
+
+    <!-- Panneau propriétés objet sélectionné -->
+    <div id="obj-props-panel" style="display:none">
+      <div id="obj-props-header">
+        <span id="obj-props-title">Propriétés</span>
+        <button id="obj-props-close" title="Fermer">✕</button>
+      </div>
+      <div id="obj-props-body">
+        <div class="form-row">
+          <label>Nom</label>
+          <input type="text" id="op-label" style="width:90px">
+        </div>
+        <div class="form-row" style="flex-direction:row;align-items:center;justify-content:space-between">
+          <label>Rôle</label>
+          <div style="display:flex;gap:4px">
+            <button class="role-btn" id="op-role-given">Donné</button>
+            <button class="role-btn" id="op-role-expected">À tracer</button>
+          </div>
+        </div>
+        <div class="form-row" style="flex-direction:row;align-items:center;justify-content:space-between">
+          <label>Couleur</label>
+          <input type="color" id="op-color" style="width:44px;height:26px;padding:1px;border:1px solid var(--border);border-radius:4px;background:transparent;cursor:pointer">
+        </div>
+        <div class="form-row">
+          <label>Épaisseur</label>
+          <div style="display:flex;align-items:center;gap:6px">
+            <input type="range" id="op-lw" min="1" max="8" step="1" style="width:80px">
+            <span id="op-lw-val" style="font-size:10px;color:var(--text-muted);min-width:12px">2</span>
+          </div>
+        </div>
+        <div class="form-row">
+          <label>Opacité</label>
+          <div style="display:flex;align-items:center;gap:6px">
+            <input type="range" id="op-opacity" min="10" max="100" step="5" style="width:80px">
+            <span id="op-opacity-val" style="font-size:10px;color:var(--text-muted);min-width:24px">100%</span>
+          </div>
+        </div>
+        <div class="form-row" style="flex-direction:row;align-items:center;justify-content:space-between">
+          <label>Style</label>
+          <div style="display:flex;gap:4px">
+            <button class="ls-btn" id="op-ls-solid">— Plein</button>
+            <button class="ls-btn" id="op-ls-dashed">- - Tirets</button>
+          </div>
+        </div>
+        <div id="op-dash-config" style="display:none">
+          <div class="form-row" style="flex-direction:row;align-items:center;justify-content:space-between">
+            <label>Tiret (px)</label>
+            <input type="number" id="op-dash-len" min="2" max="40" step="1" style="width:60px">
+          </div>
+          <div class="form-row" style="flex-direction:row;align-items:center;justify-content:space-between">
+            <label>Espace (px)</label>
+            <input type="number" id="op-gap-len" min="2" max="40" step="1" style="width:60px">
+          </div>
+        </div>
+      </div>
+    </div>
 
     <div id="question-editor">
       <div class="no-q">Sélectionnez ou créez une question.</div>
@@ -1083,26 +1174,26 @@ document.getElementById('opt-zoom').addEventListener('change', function() {
 let _currentRole = 'expected';
 let _currentLineStyle = 'solid';
 
+function defaultObjProps() {
+  return { role: _currentRole, lineStyle: _currentLineStyle, color: '', lineWidth: 2, opacity: 1, dashLen: 8, dashGap: 5 };
+}
+
 function addRefPoint(x, y) {
   const q = currentQuestion();
   if (!q) return;
   const label = nextPointLabel();
-  const obj = { type: 'point', id: genId(), label, x, y, role: _currentRole, lineStyle: _currentLineStyle };
+  const obj = { type: 'point', id: genId(), label, x, y, ...defaultObjProps() };
   q.refObjects.push(obj);
-  syncRefObjPanel();
-  syncQuestionList();
-  render();
+  syncRefObjPanel(); syncQuestionList(); render();
 }
 
 function addRefSegment(x1, y1, x2, y2) {
   const q = currentQuestion();
   if (!q) return;
   const label = 's' + (q.refObjects.filter(o => o.type === 'segment').length + 1);
-  const obj = { type: 'segment', id: genId(), label, x1, y1, x2, y2, role: _currentRole, lineStyle: _currentLineStyle };
+  const obj = { type: 'segment', id: genId(), label, x1, y1, x2, y2, ...defaultObjProps() };
   q.refObjects.push(obj);
-  syncRefObjPanel();
-  syncQuestionList();
-  render();
+  syncRefObjPanel(); syncQuestionList(); render();
 }
 
 function removeRefObject(id) {
