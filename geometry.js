@@ -542,6 +542,22 @@ function render() {
   });
 
   drawTempPreview();
+
+  // Draw lasso selection rectangle
+  if (state.isLasso && state.lassoStart && state.lassoEnd) {
+    const x = Math.min(state.lassoStart.cx, state.lassoEnd.cx);
+    const y = Math.min(state.lassoStart.cy, state.lassoEnd.cy);
+    const w = Math.abs(state.lassoEnd.cx - state.lassoStart.cx);
+    const h = Math.abs(state.lassoEnd.cy - state.lassoStart.cy);
+    ctx.save();
+    ctx.strokeStyle = '#89b4fa';
+    ctx.fillStyle = 'rgba(137,180,250,0.08)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([5, 3]);
+    ctx.strokeRect(x, y, w, h);
+    ctx.fillRect(x, y, w, h);
+    ctx.restore();
+  }
 }
 
 function drawGrid() {
@@ -1375,11 +1391,22 @@ canvas.addEventListener('mousedown', e => {
       showProperties(obj);
       render(); return;
     }
-    // Start pan with left button if nothing hit
-    state.isPanning = true;
-    state.panStart = { cx: pos.x, cy: pos.y, ox: state.ox, oy: state.oy };
-    canvas.style.cursor = 'grabbing';
-    return;
+    // Start lasso selection
+    state.isLasso = true;
+    state.lassoStart = { cx: pos.x, cy: pos.y };
+    state.lassoEnd = { cx: pos.x, cy: pos.y };
+    state.selected = [];
+    canvas.style.cursor = 'crosshair';
+    render(); return;
+  }
+
+  if (state.tool === 'lasso') {
+    state.isLasso = true;
+    state.lassoStart = { cx: pos.x, cy: pos.y };
+    state.lassoEnd = { cx: pos.x, cy: pos.y };
+    state.selected = [];
+    canvas.style.cursor = 'crosshair';
+    render(); return;
   }
 
   const snapped = snapToGrid(world.x, world.y);
@@ -1399,6 +1426,11 @@ canvas.addEventListener('mousemove', e => {
     render(); return;
   }
 
+  if (state.isLasso && state.lassoStart) {
+    state.lassoEnd = { cx: pos.x, cy: pos.y };
+    render(); return;
+  }
+
   if (state.isDragging && state.dragTarget) {
     const obj = getObj(state.dragTarget);
     if (obj && obj.type === 'point') {
@@ -1415,7 +1447,7 @@ canvas.addEventListener('mousemove', e => {
   const newHover = hit ? hit.id : null;
   if (newHover !== state.hover) {
     state.hover = newHover;
-    canvas.style.cursor = hit ? 'pointer' : (state.tool === 'select' ? 'default' : 'crosshair');
+    canvas.style.cursor = hit ? 'pointer' : (state.tool === 'select' || state.tool === 'lasso' ? 'default' : 'crosshair');
     render();
   }
 
@@ -1427,8 +1459,37 @@ canvas.addEventListener('mousemove', e => {
 });
 
 canvas.addEventListener('mouseup', e => {
-  if (state.isPanning) { state.isPanning = false; canvas.style.cursor = state.tool === 'select' ? 'default' : 'crosshair'; }
+  if (state.isPanning) { state.isPanning = false; canvas.style.cursor = (state.tool === 'select' || state.tool === 'lasso') ? 'default' : 'crosshair'; }
   if (state.isDragging) { state.isDragging = false; state.dragTarget = null; saveUndo(); }
+  if (state.isLasso && state.lassoStart && state.lassoEnd) {
+    const x1 = Math.min(state.lassoStart.cx, state.lassoEnd.cx);
+    const y1 = Math.min(state.lassoStart.cy, state.lassoEnd.cy);
+    const x2 = Math.max(state.lassoStart.cx, state.lassoEnd.cx);
+    const y2 = Math.max(state.lassoStart.cy, state.lassoEnd.cy);
+    if (x2 - x1 > 4 || y2 - y1 > 4) {
+      const selected = [];
+      state.objects.forEach(o => {
+        if (!o.visible) return;
+        let cx, cy;
+        if (isPointLike(o)) { cx = o.x; cy = o.y; }
+        else if (o.type === 'segment') {
+          const p1 = getPoint(o.p1id), p2 = getPoint(o.p2id);
+          if (p1 && p2) { cx = (p1.x + p2.x) / 2; cy = (p1.y + p2.y) / 2; }
+        } else if (o.type === 'circle') {
+          const c = getPoint(o.centerId);
+          if (c) { cx = c.x; cy = c.y; }
+        }
+        if (cx == null) return;
+        const cp = worldToCanvas(cx, cy);
+        if (cp.x >= x1 && cp.x <= x2 && cp.y >= y1 && cp.y <= y2) selected.push(o.id);
+      });
+      state.selected = selected;
+      if (selected.length === 1) { const obj = getObj(selected[0]); if (obj) showProperties(obj); }
+      else hideProperties();
+    }
+    state.isLasso = false; state.lassoStart = null; state.lassoEnd = null;
+    render();
+  }
 });
 
 canvas.addEventListener('mouseleave', () => {
@@ -1436,6 +1497,7 @@ canvas.addEventListener('mouseleave', () => {
   state.hover = null;
   if (state.isPanning) state.isPanning = false;
   if (state.isDragging) { state.isDragging = false; saveUndo(); }
+  if (state.isLasso) { state.isLasso = false; state.lassoStart = null; state.lassoEnd = null; render(); }
 });
 
 canvas.addEventListener('wheel', e => {
