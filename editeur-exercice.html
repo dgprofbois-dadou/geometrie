@@ -459,6 +459,8 @@
 <div id="topbar">
   <a href="index.html" class="topbar-btn" title="Retour à l'application">← Retour</a>
   <h1>Éditeur d'exercices — Représentation orthographique</h1>
+  <span id="autosave-status" style="font-size:10px;color:var(--text-muted)">—</span>
+  <button class="topbar-btn" id="btn-test" title="Tester dans l'application (nouvel onglet)">▶ Tester</button>
   <button class="topbar-btn" id="btn-preview-json" title="Aperçu JSON">{ } JSON</button>
   <button class="topbar-btn primary" id="btn-export">⬇ Exporter .js</button>
 </div>
@@ -1552,11 +1554,137 @@ document.getElementById('json-modal').addEventListener('click', function(e) {
 });
 
 // ══════════════════════════════════════════════════════
+// SAUVEGARDE AUTOMATIQUE (localStorage)
+// ══════════════════════════════════════════════════════
+
+const STORAGE_KEY = 'geoapp_editeur_v1';
+
+function serializeState() {
+  return {
+    title: exerciseData.title,
+    globalInstructions: exerciseData.globalInstructions,
+    imageUrl: exerciseData.imageUrl,
+    refColor: document.getElementById('opt-ref-color').value,
+    gridUnit: document.getElementById('opt-grid').value,
+    initialZoom: document.getElementById('opt-zoom').value,
+    questions: exerciseData.questions.map(q => ({
+      id: q.id,
+      num: q.num,
+      instructions: q.instructions,
+      activeZones: [...q.activeZones],
+      tolerance: q.tolerance,
+      refObjects: q.refObjects
+    })),
+    currentQuestionId,
+    nextObjId,
+    pointLabelCounter
+  };
+}
+
+function deserializeState(data) {
+  exerciseData.title = data.title || '';
+  exerciseData.globalInstructions = data.globalInstructions || '';
+  exerciseData.imageUrl = data.imageUrl || '';
+
+  document.getElementById('ex-title').value = exerciseData.title;
+  document.getElementById('ex-global-instructions').value = exerciseData.globalInstructions;
+  document.getElementById('ex-image-url').value = exerciseData.imageUrl;
+  if (data.refColor) document.getElementById('opt-ref-color').value = data.refColor;
+  if (data.gridUnit) document.getElementById('opt-grid').value = data.gridUnit;
+  if (data.initialZoom) document.getElementById('opt-zoom').value = data.initialZoom;
+
+  if (exerciseData.imageUrl) {
+    const img = document.getElementById('ex-image-preview');
+    img.src = exerciseData.imageUrl;
+    img.style.display = 'block';
+  }
+
+  if (data.nextObjId) nextObjId = data.nextObjId;
+  if (data.pointLabelCounter !== undefined) pointLabelCounter = data.pointLabelCounter;
+
+  exerciseData.questions = (data.questions || []).map(q => ({
+    id: q.id,
+    num: q.num,
+    instructions: q.instructions || '',
+    activeZones: new Set(q.activeZones || ['zone-center']),
+    tolerance: q.tolerance || 0.5,
+    refObjects: q.refObjects || []
+  }));
+
+  questionCounter = exerciseData.questions.length;
+
+  if (exerciseData.questions.length > 0) {
+    const targetId = data.currentQuestionId || exerciseData.questions[0].id;
+    selectQuestion(targetId);
+  }
+
+  syncQuestionList();
+  syncTotalQuestions();
+  render();
+}
+
+let _saveTimer = null;
+function scheduleSave() {
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(serializeState()));
+      const el = document.getElementById('autosave-status');
+      if (el) {
+        el.textContent = '✔ Sauvegardé ' + new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
+        el.style.color = 'var(--success)';
+        setTimeout(() => { el.style.color = 'var(--text-muted)'; }, 2000);
+      }
+    } catch(e) { console.warn('Autosave failed', e); }
+  }, 800);
+}
+
+// Déclencher la sauvegarde sur toutes les modifications
+document.addEventListener('input', scheduleSave);
+const _origAddQ = addQuestion;
+// Patch des fonctions qui modifient l'état
+const _patchSave = fn => function(...args) { const r = fn(...args); scheduleSave(); return r; };
+// On surveille les actions clés via MutationObserver sur la liste de questions
+new MutationObserver(scheduleSave).observe(
+  document.getElementById('questions-list'), { childList: true, subtree: true }
+);
+
+// ── Bouton Tester ─────────────────────────────────
+document.getElementById('btn-test').addEventListener('click', () => {
+  if (exerciseData.questions.length === 0) {
+    alert('Ajoutez au moins une question avant de tester.');
+    return;
+  }
+  const data = buildExerciseData();
+  const code = generateJS(data);
+  // Stocker le code dans localStorage pour que index.html le récupère
+  try {
+    localStorage.setItem('geoapp_pending_exercise', code);
+    window.open('index.html?autoload=1', '_blank');
+  } catch(e) {
+    alert('Impossible d\'ouvrir le test : ' + e.message);
+  }
+});
+
+// ══════════════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════════════
 resizeCanvas();
-// Start with one question by default
-addQuestion();
+
+// Restaurer depuis localStorage si disponible, sinon créer une question vide
+const _saved = localStorage.getItem(STORAGE_KEY);
+if (_saved) {
+  try {
+    deserializeState(JSON.parse(_saved));
+    const el = document.getElementById('autosave-status');
+    if (el) el.textContent = '↩ Session restaurée';
+  } catch(e) {
+    console.warn('Restore failed', e);
+    addQuestion();
+  }
+} else {
+  addQuestion();
+}
 </script>
 </body>
 </html>

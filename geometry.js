@@ -2133,4 +2133,30 @@ document.addEventListener('DOMContentLoaded', () => {
       codeEditor.selectionStart = codeEditor.selectionEnd = s + 2;
     }
   });
+
+  // ── Chargement automatique depuis l'éditeur (bouton Tester) ──
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('autoload') === '1') {
+    const pendingCode = localStorage.getItem('geoapp_pending_exercise');
+    if (pendingCode) {
+      localStorage.removeItem('geoapp_pending_exercise');
+      // Basculer vers l'onglet Exercice et afficher le code
+      const tabEx = document.querySelector('[data-tab="exercise"]');
+      const panelEx = document.getElementById('tab-exercise');
+      document.querySelectorAll('.left-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
+      if (tabEx) tabEx.classList.add('active');
+      if (panelEx) panelEx.style.display = 'flex';
+      if (codeEditor) codeEditor.value = pendingCode;
+      // Exécuter automatiquement
+      setTimeout(() => {
+        try {
+          geoApp.loadExerciseFromText(pendingCode);
+          logCode('▶ Exercice chargé depuis l\'éditeur.', 'ok');
+        } catch(e) {
+          logCode('✕ Erreur : ' + e.message, 'err');
+        }
+      }, 100);
+    }
+  }
 });
