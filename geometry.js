@@ -431,7 +431,10 @@ function makePoint(wx, wy, label, color = '#7c9eff') {
 
 function snapToGrid(wx, wy) {
   if (!state.showGrid) return { x: wx, y: wy };
-  const snap = state.scale < 30 ? 2 : state.scale < 80 ? 1 : 0.5;
+  // Use explicit snapUnit if set (from editor), else auto from zoom level
+  const snap = (state.snapUnit != null) ? state.snapUnit
+             : (state.scale < 30 ? 2 : state.scale < 80 ? 1 : 0.5);
+  if (snap <= 0) return { x: wx, y: wy };
   return { x: Math.round(wx / snap) * snap, y: Math.round(wy / snap) * snap };
 }
 
