@@ -447,6 +447,21 @@
     }
     .tag-btn:hover { border-color: var(--accent); color: var(--accent); }
 
+    /* ── Boutons rôle / style ── */
+    .role-btn, .ls-btn {
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text-muted);
+      font-size: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all .1s;
+    }
+    .role-btn:hover, .ls-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .role-active { background: var(--accent) !important; color: #0f0f1a !important; border-color: var(--accent) !important; }
+
     /* Scrollbars */
     ::-webkit-scrollbar { width: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
@@ -776,35 +791,48 @@ function render() {
     ctx.beginPath(); ctx.moveTo(o.x, 0); ctx.lineTo(o.x, H); ctx.stroke();
   }
 
-  const color = document.getElementById('opt-ref-color').value;
+  // Couleurs selon le rôle
+  const COLOR_GIVEN    = '#f9e2af'; // jaune = donné (visible dès le début)
+  const COLOR_EXPECTED = document.getElementById('opt-ref-color').value; // rose = à tracer
+
+  // Légende
+  ctx.save();
+  ctx.font = '10px Segoe UI';
+  ctx.fillStyle = COLOR_GIVEN;    ctx.fillRect(8, 8, 10, 10); ctx.fillStyle='#cdd6f4'; ctx.fillText('Donné',    22, 18);
+  ctx.fillStyle = COLOR_EXPECTED; ctx.fillRect(8,24, 10, 10); ctx.fillStyle='#cdd6f4'; ctx.fillText('À tracer', 22, 34);
+  ctx.restore();
 
   // Ref objects for current question
   const objs = getRefObjects();
   for (const obj of objs) {
     const isSelected = edState.selected === obj.id;
-    const isHover = edState.hover === obj.id;
+    const isHover    = edState.hover === obj.id;
+    const color = obj.role === 'given' ? COLOR_GIVEN : COLOR_EXPECTED;
+    const dash  = obj.lineStyle === 'dashed' ? [6, 4] : [];
 
     ctx.save();
     if (obj.type === 'point') {
       const c = w2c(obj.x, obj.y);
-      ctx.fillStyle = isSelected ? '#fff' : isHover ? color + 'dd' : color;
-      if (isSelected) {
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(c.x, c.y, 7, 0, Math.PI*2); ctx.stroke();
-      }
+      // Badge de rôle (G / T)
+      ctx.fillStyle = color + '33';
+      ctx.beginPath(); ctx.arc(c.x, c.y, 10, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = isSelected ? '#fff' : color;
       ctx.beginPath(); ctx.arc(c.x, c.y, 5, 0, Math.PI*2); ctx.fill();
+      if (isSelected) {
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(c.x, c.y, 8, 0, Math.PI*2); ctx.stroke();
+      }
       ctx.fillStyle = '#cdd6f4';
       ctx.font = '11px Segoe UI';
-      ctx.fillText(obj.label, c.x + 7, c.y - 5);
+      ctx.fillText(obj.label, c.x + 8, c.y - 5);
 
     } else if (obj.type === 'segment') {
       const p1 = w2c(obj.x1, obj.y1), p2 = w2c(obj.x2, obj.y2);
-      ctx.strokeStyle = isSelected ? '#fff' : isHover ? color + 'dd' : color;
+      ctx.strokeStyle = isSelected ? '#fff' : color;
       ctx.lineWidth = isSelected ? 3 : 2;
-      ctx.setLineDash([]);
+      ctx.setLineDash(dash);
       ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
-      // endpoint dots
+      ctx.setLineDash([]);
       ctx.fillStyle = ctx.strokeStyle;
       ctx.beginPath(); ctx.arc(p1.x, p1.y, 4, 0, Math.PI*2); ctx.fill();
       ctx.beginPath(); ctx.arc(p2.x, p2.y, 4, 0, Math.PI*2); ctx.fill();
@@ -1051,11 +1079,15 @@ document.getElementById('opt-zoom').addEventListener('change', function() {
 // REF OBJECT MANAGEMENT
 // ══════════════════════════════════════════════════════
 
+// Rôle courant pour les nouveaux objets (toggle dans la toolbar canvas)
+let _currentRole = 'expected';
+let _currentLineStyle = 'solid';
+
 function addRefPoint(x, y) {
   const q = currentQuestion();
   if (!q) return;
   const label = nextPointLabel();
-  const obj = { type: 'point', id: genId(), label, x, y };
+  const obj = { type: 'point', id: genId(), label, x, y, role: _currentRole, lineStyle: _currentLineStyle };
   q.refObjects.push(obj);
   syncRefObjPanel();
   syncQuestionList();
@@ -1066,7 +1098,7 @@ function addRefSegment(x1, y1, x2, y2) {
   const q = currentQuestion();
   if (!q) return;
   const label = 's' + (q.refObjects.filter(o => o.type === 'segment').length + 1);
-  const obj = { type: 'segment', id: genId(), label, x1, y1, x2, y2 };
+  const obj = { type: 'segment', id: genId(), label, x1, y1, x2, y2, role: _currentRole, lineStyle: _currentLineStyle };
   q.refObjects.push(obj);
   syncRefObjPanel();
   syncQuestionList();
@@ -1097,6 +1129,7 @@ function addQuestion() {
     instructions: '',
     activeZones: new Set(['zone-center']),
     tolerance: 0.5,
+    pointsPerCorrect: 1,
     refObjects: []
   };
   exerciseData.questions.push(q);
@@ -1187,7 +1220,23 @@ function renderQuestionEditor() {
       ${buildZoneChecks(q)}
     </div>
 
+    <div class="form-row">
+      <label>Points par tracé correct</label>
+      <div style="display:flex;align-items:center;gap:6px">
+        <input type="number" id="q-pts" value="${q.pointsPerCorrect ?? 1}" min="0" max="10" step="0.5" style="width:60px">
+        <span style="font-size:10px;color:var(--text-muted)">pt/objet</span>
+      </div>
+    </div>
+
     <h4 style="margin-top:4px">Objets de référence</h4>
+    <div style="display:flex;gap:4px;margin-bottom:6px;align-items:center;flex-wrap:wrap">
+      <span style="font-size:10px;color:var(--text-muted)">Prochain objet :</span>
+      <button class="role-btn ${_currentRole==='given'?'role-active':''}"    id="toggle-role-given">Donné</button>
+      <button class="role-btn ${_currentRole==='expected'?'role-active':''}" id="toggle-role-expected">À tracer</button>
+      <span style="font-size:10px;color:var(--text-muted);margin-left:4px">Style :</span>
+      <button class="ls-btn ${_currentLineStyle==='solid'?'ls-active':''}"   id="toggle-ls-solid">—</button>
+      <button class="ls-btn ${_currentLineStyle==='dashed'?'ls-active':''}"  id="toggle-ls-dashed">- -</button>
+    </div>
     <div id="ref-objects-list">
       ${buildRefObjList(q)}
     </div>
@@ -1206,6 +1255,28 @@ function renderQuestionEditor() {
 
   document.getElementById('q-tolerance').addEventListener('input', function() {
     q.tolerance = parseFloat(this.value) || 0.5;
+  });
+
+  document.getElementById('q-pts').addEventListener('input', function() {
+    q.pointsPerCorrect = parseFloat(this.value) ?? 1;
+  });
+
+  // Toggles rôle / style courant
+  document.getElementById('toggle-role-given').addEventListener('click', () => {
+    _currentRole = 'given';
+    renderQuestionEditor();
+  });
+  document.getElementById('toggle-role-expected').addEventListener('click', () => {
+    _currentRole = 'expected';
+    renderQuestionEditor();
+  });
+  document.getElementById('toggle-ls-solid').addEventListener('click', () => {
+    _currentLineStyle = 'solid';
+    renderQuestionEditor();
+  });
+  document.getElementById('toggle-ls-dashed').addEventListener('click', () => {
+    _currentLineStyle = 'dashed';
+    renderQuestionEditor();
   });
 
   document.querySelectorAll('.zone-cb').forEach(cb => {
@@ -1275,14 +1346,22 @@ function buildRefObjList(q) {
     return '<div class="empty-objects">Aucun objet — dessinez sur le canvas ou cliquez sur + ci-dessous.</div>';
   }
   return q.refObjects.map(obj => {
-    const icon = obj.type === 'point' ? '•' : '—';
+    const role = obj.role || 'expected';
+    const ls   = obj.lineStyle || 'solid';
     const coords = obj.type === 'point'
-      ? `(${obj.x.toFixed(2)}, ${obj.y.toFixed(2)})`
-      : `(${obj.x1.toFixed(2)},${obj.y1.toFixed(2)}) → (${obj.x2.toFixed(2)},${obj.y2.toFixed(2)})`;
-    return `<div class="ref-obj-item">
-      <span class="ref-obj-icon">${icon}</span>
-      <span style="font-weight:600;min-width:24px;font-size:11px">${obj.label}</span>
-      <span class="ref-obj-coords">${coords}</span>
+      ? `(${obj.x.toFixed(1)}, ${obj.y.toFixed(1)})`
+      : `(${obj.x1.toFixed(1)},${obj.y1.toFixed(1)})→(${obj.x2.toFixed(1)},${obj.y2.toFixed(1)})`;
+    return `<div class="ref-obj-item" data-id="${obj.id}">
+      <span style="font-weight:700;min-width:22px;font-size:11px;color:${role==='given'?'#f9e2af':'#f38ba8'}">${obj.label}</span>
+      <div style="display:flex;flex-direction:column;gap:2px;flex:1">
+        <div style="display:flex;gap:3px">
+          <button class="role-btn ${role==='given'?'role-active':''}" data-id="${obj.id}" data-role="given"  title="Donné (visible au départ)">Donné</button>
+          <button class="role-btn ${role==='expected'?'role-active':''}" data-id="${obj.id}" data-role="expected" title="À tracer par l'élève">À tracer</button>
+          <button class="ls-btn ${ls==='solid'?'ls-active':''}"   data-id="${obj.id}" data-ls="solid"  title="Trait plein">—</button>
+          <button class="ls-btn ${ls==='dashed'?'ls-active':''}"  data-id="${obj.id}" data-ls="dashed" title="Trait tirets">- -</button>
+        </div>
+        <span class="ref-obj-coords">${coords}</span>
+      </div>
       <button class="ref-obj-del ref-obj-del-btn" data-id="${obj.id}" title="Supprimer">✕</button>
     </div>`;
   }).join('');
@@ -1293,14 +1372,28 @@ function syncRefObjPanel() {
   if (!listEl) return;
   const q = currentQuestion();
   listEl.innerHTML = q ? buildRefObjList(q) : '';
-  if (listEl) {
-    listEl.querySelectorAll('.ref-obj-del-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        removeRefObject(parseInt(btn.dataset.id));
-        renderQuestionEditor();
-      });
+
+  listEl.querySelectorAll('.ref-obj-del-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      removeRefObject(parseInt(btn.dataset.id));
+      renderQuestionEditor();
     });
-  }
+  });
+
+  listEl.querySelectorAll('.role-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const obj = q && q.refObjects.find(o => o.id === parseInt(btn.dataset.id));
+      if (obj) { obj.role = btn.dataset.role; syncRefObjPanel(); render(); scheduleSave(); }
+    });
+  });
+
+  listEl.querySelectorAll('.ls-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const obj = q && q.refObjects.find(o => o.id === parseInt(btn.dataset.id));
+      if (obj) { obj.lineStyle = btn.dataset.ls; syncRefObjPanel(); render(); scheduleSave(); }
+    });
+  });
+
   syncQuestionList();
 }
 
@@ -1344,20 +1437,35 @@ document.getElementById('btn-add-question').addEventListener('click', addQuestio
 // ══════════════════════════════════════════════════════
 
 function buildExerciseData() {
+  const questions = exerciseData.questions.map(q => {
+    const given    = q.refObjects.filter(o => o.role === 'given');
+    const expected = q.refObjects.filter(o => o.role !== 'given'); // 'expected' ou undefined
+    return {
+      num: q.num,
+      instructions: q.instructions,
+      activeZones: [...q.activeZones],
+      tolerance: q.tolerance,
+      pointsPerCorrect: q.pointsPerCorrect ?? 1,
+      // Objets donnés : visibles dès le début, fixes
+      givenPoints:   given.filter(o => o.type === 'point').map(o   => ({ label: o.label, x: o.x, y: o.y, lineStyle: o.lineStyle||'solid' })),
+      givenSegments: given.filter(o => o.type === 'segment').map(o => ({ label: o.label, x1: o.x1, y1: o.y1, x2: o.x2, y2: o.y2, lineStyle: o.lineStyle||'solid' })),
+      // Objets à tracer : utilisés uniquement pour la correction
+      expectedPoints:   expected.filter(o => o.type === 'point').map(o   => ({ label: o.label, x: o.x, y: o.y })),
+      expectedSegments: expected.filter(o => o.type === 'segment').map(o => ({ label: o.label, x1: o.x1, y1: o.y1, x2: o.x2, y2: o.y2 }))
+    };
+  });
+
+  const maxScore = questions.reduce((acc, q) =>
+    acc + (q.expectedPoints.length + q.expectedSegments.length) * q.pointsPerCorrect, 0);
+
   return {
     title: exerciseData.title || 'Exercice sans titre',
     globalInstructions: exerciseData.globalInstructions,
     imageUrl: exerciseData.imageUrl,
     totalQuestions: exerciseData.questions.length,
+    maxScore,
     initialZoom: parseInt(document.getElementById('opt-zoom').value) || 60,
-    questions: exerciseData.questions.map(q => ({
-      num: q.num,
-      instructions: q.instructions,
-      activeZones: [...q.activeZones],
-      tolerance: q.tolerance,
-      refPoints: q.refObjects.filter(o => o.type === 'point').map(o => ({ label: o.label, x: o.x, y: o.y })),
-      refSegments: q.refObjects.filter(o => o.type === 'segment').map(o => ({ label: o.label, x1: o.x1, y1: o.y1, x2: o.x2, y2: o.y2 }))
-    }))
+    questions
   };
 }
 
@@ -1415,66 +1523,98 @@ function generateJS(data) {
       geoApp.hideZones();
     }
 
-    // Place reference objects (fixed, invisible) — used only for visual debugging
-    // In production these are hidden; set visible:true to show the answer
-    q.refPoints.forEach(function(p) {
-      geoApp.evalCommand('__ref_' + p.label + ' = Point(' + p.x + ', ' + p.y + ')');
-      geoApp.setFixed('__ref_' + p.label, true);
-      geoApp.setVisible('__ref_' + p.label, false);
+    // ── Objets DONNÉS : visibles, fixes, stylés ──────
+    (q.givenPoints || []).forEach(function(p) {
+      geoApp.evalCommand('__giv_' + p.label + ' = Point(' + p.x + ', ' + p.y + ')');
+      geoApp.setFixed('__giv_' + p.label, true);
+      geoApp.setVisible('__giv_' + p.label, true);
+      geoApp.setColor('__giv_' + p.label, 249, 226, 175); // jaune
+    });
+    (q.givenSegments || []).forEach(function(s, i) {
+      var n = '__givs' + i;
+      var a = '__giva' + i, b = '__givb' + i;
+      geoApp.evalCommand(a + ' = Point(' + s.x1 + ',' + s.y1 + ')');
+      geoApp.evalCommand(b + ' = Point(' + s.x2 + ',' + s.y2 + ')');
+      geoApp.setFixed(a, true); geoApp.setVisible(a, false);
+      geoApp.setFixed(b, true); geoApp.setVisible(b, false);
+      // Segment entre les deux points
+      geoApp.evalCommand(n + ' = Segment(' + a + ',' + b + ')');
+      geoApp.setFixed(n, true);
+      geoApp.setColor(n, 249, 226, 175); // jaune
+      if (s.lineStyle === 'dashed') geoApp.setLineStyle(n, 3);
     });
   }
 
   function validateQuestion() {
     const q = EXERCISE.questions[currentQIdx];
-    if (!q) return;
+    if (!q) return 0;
 
     const all = geoApp.getAllObjects();
+    // Objets élève : ni fixés ni internes (__giv_, __ref_)
     const studentPts = all.filter(function(o) {
-      return (o.type === 'point' || o.type === 'midpoint') && !o.fixed && !o.label.startsWith('__ref_');
+      return (o.type === 'point' || o.type === 'midpoint')
+        && !o.fixed && !o.label.startsWith('__');
     });
     const studentSegs = all.filter(function(o) {
-      return o.type === 'segment' && !o.fixed && !o.label.startsWith('__ref_');
+      return o.type === 'segment' && !o.fixed && !o.label.startsWith('__');
     });
 
     const tol = q.tolerance || 0.5;
-    let correct = 0;
-    const total = q.refPoints.length + q.refSegments.length;
+    const ppc = q.pointsPerCorrect != null ? q.pointsPerCorrect : 1;
+    let gained = 0;
 
-    // Check expected points
-    q.refPoints.forEach(function(ref) {
-      const matched = studentPts.some(function(s) {
-        return dist2d(s.x, s.y, ref.x, ref.y) <= tol;
+    // ── Vérification points attendus ──────────────────
+    (q.expectedPoints || []).forEach(function(ref) {
+      var best = null, bestD = Infinity;
+      studentPts.forEach(function(s) {
+        var d = dist2d(s.x, s.y, ref.x, ref.y);
+        if (d < bestD) { bestD = d; best = s; }
       });
-      if (matched) correct++;
+      if (best && bestD <= tol) {
+        geoApp.setColor(best.label, 166, 227, 161); // vert
+        gained += ppc;
+      } else if (best) {
+        geoApp.setColor(best.label, 243, 139, 168); // rouge
+      }
     });
 
-    // Check expected segments (both orientations)
-    q.refSegments.forEach(function(ref) {
-      const matched = studentSegs.some(function(s) {
-        if (!s.p1 || !s.p2) return false;
-        const fwd = dist2d(s.p1.x, s.p1.y, ref.x1, ref.y1) <= tol
-                 && dist2d(s.p2.x, s.p2.y, ref.x2, ref.y2) <= tol;
-        const rev = dist2d(s.p1.x, s.p1.y, ref.x2, ref.y2) <= tol
-                 && dist2d(s.p2.x, s.p2.y, ref.x1, ref.y1) <= tol;
-        return fwd || rev;
+    // ── Vérification segments attendus ────────────────
+    var usedStudentSegs = {};
+    (q.expectedSegments || []).forEach(function(ref) {
+      var best = null, bestScore = -1;
+      studentSegs.forEach(function(s) {
+        if (usedStudentSegs[s.label]) return;
+        if (!s.p1 || !s.p2) return;
+        var fwd = dist2d(s.p1.x,s.p1.y,ref.x1,ref.y1) + dist2d(s.p2.x,s.p2.y,ref.x2,ref.y2);
+        var rev = dist2d(s.p1.x,s.p1.y,ref.x2,ref.y2) + dist2d(s.p2.x,s.p2.y,ref.x1,ref.y1);
+        var sc = -Math.min(fwd, rev);
+        if (sc > bestScore) { bestScore = sc; best = s; }
       });
-      if (matched) correct++;
+      if (!best) return;
+      var fwd = dist2d(best.p1.x,best.p1.y,ref.x1,ref.y1) <= tol && dist2d(best.p2.x,best.p2.y,ref.x2,ref.y2) <= tol;
+      var rev = dist2d(best.p1.x,best.p1.y,ref.x2,ref.y2) <= tol && dist2d(best.p2.x,best.p2.y,ref.x1,ref.y1) <= tol;
+      if (fwd || rev) {
+        geoApp.setColor(best.label, 166, 227, 161); // vert
+        gained += ppc;
+        usedStudentSegs[best.label] = true;
+      } else {
+        geoApp.setColor(best.label, 243, 139, 168); // rouge
+      }
     });
 
-    const questionCorrect = total === 0 || correct === total;
+    score += gained;
+    geoApp.updateScore(score.toFixed(1), EXERCISE.maxScore != null ? EXERCISE.maxScore.toFixed(1) : '?');
 
-    // Update zone states
+    const totalExpected = (q.expectedPoints||[]).length + (q.expectedSegments||[]).length;
+    const allCorrect = totalExpected === 0 || gained >= totalExpected * ppc;
+
     if (q.activeZones && q.activeZones.length > 0) {
-      const zoneState = questionCorrect ? 'correct' : 'error';
-      q.activeZones.forEach(function(z) { geoApp.setZoneState(z, zoneState); });
+      q.activeZones.forEach(function(z) {
+        geoApp.setZoneState(z, allCorrect ? 'correct' : 'error');
+      });
     }
 
-    if (questionCorrect) {
-      score++;
-    }
-
-    geoApp.updateScore(score, EXERCISE.totalQuestions);
-    return questionCorrect;
+    return gained;
   }
 
   // ── Register callbacks ────────────────────────────
@@ -1493,7 +1633,7 @@ function generateJS(data) {
     currentQIdx = 0;
     score = 0;
     loadQuestion(0);
-    geoApp.updateScore(0, EXERCISE.totalQuestions);
+    geoApp.updateScore('0', EXERCISE.maxScore != null ? EXERCISE.maxScore.toFixed(1) : '?');
     ['zone-top','zone-center','zone-left','zone-bottom','zone-right'].forEach(function(z) {
       geoApp.setZoneState(z, 'neutral');
     });
@@ -1504,8 +1644,10 @@ function generateJS(data) {
     title: EXERCISE.title,
     instructions: EXERCISE.questions.length > 0 ? EXERCISE.questions[0].instructions : EXERCISE.globalInstructions,
     imageUrl: EXERCISE.imageUrl,
-    totalQuestions: EXERCISE.totalQuestions
+    totalQuestions: EXERCISE.totalQuestions,
+    maxScore: EXERCISE.maxScore
   });
+  geoApp.updateScore('0', EXERCISE.maxScore != null ? EXERCISE.maxScore.toFixed(1) : '?');
 
   if (EXERCISE.initialZoom) {
     geoApp.evalCommand('ZoomIn');

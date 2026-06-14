@@ -1882,13 +1882,14 @@ const geoApp = {
 
   // ── Exercise panel ───────────────────────────────
 
-  setupExercise({ title, instructions, imageUrl, totalQuestions }) {
+  setupExercise({ title, instructions, imageUrl, totalQuestions, maxScore }) {
     const panel = document.getElementById('exercise-panel');
     if (!panel) return;
     panel.classList.remove('hidden');
     document.getElementById('ex-title').textContent = title || '';
     document.getElementById('ex-instructions').textContent = instructions || '';
-    document.getElementById('ex-score').textContent = '0 / ' + (totalQuestions || 0);
+    const scoreMax = maxScore != null ? maxScore.toFixed(1) : (totalQuestions || 0);
+    document.getElementById('ex-score').textContent = '0 / ' + scoreMax;
     document.getElementById('ex-question-num').textContent = '1 / ' + (totalQuestions || 0);
     const img = document.getElementById('ex-ref-image');
     if (imageUrl && img) { img.src = imageUrl; img.style.display = 'block'; }
