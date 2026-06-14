@@ -1576,6 +1576,25 @@ function toggleAxes() {
   render();
 }
 
+// ── Snap controls ─────────────────────────────────
+state.snapUnit = 1;
+(function() {
+  const btnSnap = document.getElementById('btn-snap');
+  const selUnit = document.getElementById('snap-unit');
+  if (btnSnap) {
+    btnSnap.addEventListener('click', function() {
+      const on = this.classList.toggle('active');
+      state.snapUnit = on ? (parseFloat(selUnit ? selUnit.value : '1') || 1) : 0;
+    });
+  }
+  if (selUnit) {
+    selUnit.addEventListener('change', function() {
+      state.snapUnit = parseFloat(this.value) || 1;
+      if (btnSnap) btnSnap.classList.add('active');
+    });
+  }
+})();
+
 // ── Algebra panel ─────────────────────────────────
 document.getElementById('toggle-algebra').addEventListener('click', () => {
   document.getElementById('algebra-panel').classList.toggle('collapsed');
