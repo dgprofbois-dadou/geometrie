@@ -28,6 +28,19 @@ const state = {
   isDragging: false,
   dragTarget: null,
   dragOffsetWorld: null,
+  // lasso
+  isLasso: false,
+  lassoStart: null,
+  lassoEnd: null,
+  // zones (orthographic projection)
+  zonesVisible: false,
+  zones: [],          // [{id, label, x1,y1,x2,y2, state:'neutral'|'active'|'yellow'|'green'}]
+  // figure groups (drag-and-drop)
+  figureGroups: [],   // [{id, label, objectIds, pivotId, targetZoneId, targetX, targetY}]
+  isDraggingGroup: null,  // group id being dragged
+  groupDragOffset: null,  // {dx, dy} world offset
+  groupDragOrigPos: null, // {x,y} original pivot position
+  groupMovedCallback: null,
   // label counter
   labelCounters: { point: 0, line: 0, circle: 0, polygon: 0, text: 0, angle: 0, measure: 0 }
 };
@@ -503,6 +516,88 @@ function nextColor() { return COLORS[colorIdx++ % COLORS.length]; }
 // RENDERING
 // ══════════════════════════════════════════════════════
 
+// ── Zone system ───────────────────────────────────
+function buildZoneLayout(activeZoneIds, zoneW, zoneH, gap) {
+  zoneW = zoneW || 8; zoneH = zoneH || 6; gap = gap || 0.5;
+  const defs = {
+    'zone-top':    { label: 'Dessus',  dx: 0,            dy: zoneH + gap  },
+    'zone-center': { label: 'Face',    dx: 0,            dy: 0            },
+    'zone-left':   { label: 'Gauche',  dx: -(zoneW+gap), dy: 0            },
+    'zone-right':  { label: 'Droite',  dx: zoneW + gap,  dy: 0            },
+    'zone-bottom': { label: 'Dessous', dx: 0,            dy: -(zoneH+gap) },
+  };
+  return activeZoneIds.map(id => {
+    const d = defs[id]; if (!d) return null;
+    return {
+      id, label: d.label,
+      x1: d.dx - zoneW/2, y1: d.dy - zoneH/2,
+      x2: d.dx + zoneW/2, y2: d.dy + zoneH/2,
+      state: 'active'
+    };
+  }).filter(Boolean);
+}
+
+const ZONE_COLORS = {
+  neutral: { fill: 'rgba(100,100,150,0.08)', stroke: 'rgba(100,100,150,0.35)' },
+  active:  { fill: 'rgba(100,150,255,0.10)', stroke: 'rgba(100,150,255,0.50)' },
+  yellow:  { fill: 'rgba(250,200,50,0.20)',  stroke: 'rgba(250,200,50,0.85)'  },
+  green:   { fill: 'rgba(50,210,100,0.22)',  stroke: 'rgba(50,210,100,0.90)'  },
+  error:   { fill: 'rgba(240,80,80,0.18)',   stroke: 'rgba(240,80,80,0.80)'   },
+};
+
+function drawZones() {
+  if (!state.zonesVisible || !state.zones.length) return;
+  state.zones.forEach(z => {
+    const c = ZONE_COLORS[z.state] || ZONE_COLORS.active;
+    const p1 = worldToCanvas(z.x1, z.y2);
+    const p2 = worldToCanvas(z.x2, z.y1);
+    const w = p2.x - p1.x, h = p2.y - p1.y;
+    ctx.save();
+    ctx.fillStyle = c.fill;
+    ctx.strokeStyle = c.stroke;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 3]);
+    ctx.fillRect(p1.x, p1.y, w, h);
+    ctx.strokeRect(p1.x, p1.y, w, h);
+    ctx.setLineDash([]);
+    // Label
+    const cx = (p1.x + p2.x) / 2, cy = (p1.y + p2.y) / 2;
+    ctx.fillStyle = c.stroke;
+    ctx.font = `bold ${Math.max(10, Math.min(16, state.scale * 0.25))}px sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(z.label, cx, cy);
+    ctx.restore();
+  });
+}
+
+function drawFigureGroupPivots() {
+  state.figureGroups.forEach(fg => {
+    const pivot = state.objects.find(o => o.id === fg.pivotId);
+    if (!pivot || pivot.x == null) return;
+    const c = worldToCanvas(pivot.x, pivot.y);
+    ctx.save();
+    ctx.strokeStyle = '#89b4fa';
+    ctx.fillStyle = 'rgba(137,180,250,0.25)';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(c.x, c.y, 10, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+    // + symbol
+    ctx.strokeStyle = '#89b4fa'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(c.x-5, c.y); ctx.lineTo(c.x+5, c.y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(c.x, c.y-5); ctx.lineTo(c.x, c.y+5); ctx.stroke();
+    // Label
+    if (fg.label) {
+      ctx.fillStyle = '#89b4fa';
+      ctx.font = '10px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      ctx.fillText(fg.label, c.x + 12, c.y - 6);
+    }
+    ctx.restore();
+  });
+}
+
+function getGroupZoneAt(x, y) {
+  return state.zones.find(z => x >= z.x1 && x <= z.x2 && y >= z.y1 && y <= z.y2) || null;
+}
+
 function render() {
   evalAll();
   const W = canvas.width, H = canvas.height;
@@ -514,6 +609,7 @@ function render() {
 
   if (state.showGrid) drawGrid();
   if (state.showAxes) drawAxes();
+  drawZones();
 
   // Draw objects (back to front)
   // First: filled polygons
@@ -542,6 +638,7 @@ function render() {
   });
 
   drawTempPreview();
+  drawFigureGroupPivots();
 
   // Draw lasso selection rectangle
   if (state.isLasso && state.lassoStart && state.lassoEnd) {
@@ -1377,6 +1474,21 @@ canvas.addEventListener('mousedown', e => {
   if (e.button === 2) return;
 
   if (state.tool === 'select') {
+    // Check if clicking a group pivot first
+    const hitGroup = state.figureGroups.find(fg => {
+      const pivot = state.objects.find(o => o.id === fg.pivotId);
+      if (!pivot) return false;
+      const c = worldToCanvas(pivot.x, pivot.y);
+      return Math.hypot(c.x - pos.x, c.y - pos.y) <= 14;
+    });
+    if (hitGroup) {
+      const pivot = state.objects.find(o => o.id === hitGroup.pivotId);
+      state.isDraggingGroup = hitGroup.id;
+      state.groupDragOffset = { dx: pivot.x - world.x, dy: pivot.y - world.y };
+      state.groupDragOrigPos = { x: pivot.x, y: pivot.y };
+      canvas.style.cursor = 'grabbing';
+      render(); return;
+    }
     const obj = objectAtCanvas(pos.x, pos.y);
     if (obj && isPointLike(obj)) {
       state.isDragging = true;
@@ -1438,6 +1550,33 @@ canvas.addEventListener('mousemove', e => {
     render(); return;
   }
 
+  if (state.isDraggingGroup) {
+    const fg = state.figureGroups.find(g => g.id === state.isDraggingGroup);
+    if (fg) {
+      const pivot = state.objects.find(o => o.id === fg.pivotId);
+      if (pivot) {
+        const newX = world.x + state.groupDragOffset.dx;
+        const newY = world.y + state.groupDragOffset.dy;
+        const ddx = newX - pivot.x, ddy = newY - pivot.y;
+        // Move pivot
+        pivot.x = newX; pivot.y = newY;
+        // Move all group objects
+        fg.objectIds.forEach(oid => {
+          const o = state.objects.find(ob => ob.id === oid);
+          if (!o) return;
+          if (o.x != null) { o.x += ddx; o.y += ddy; }
+          if (o.x1 != null) { o.x1 += ddx; o.y1 += ddy; o.x2 += ddx; o.y2 += ddy; }
+        });
+        // Highlight zone under pivot
+        const zone = getGroupZoneAt(pivot.x, pivot.y);
+        state.zones.forEach(z => { if (z.state !== 'green') z.state = 'active'; });
+        if (zone && zone.state !== 'green') zone.state = 'yellow';
+        render();
+      }
+    }
+    return;
+  }
+
   if (state.isDragging && state.dragTarget) {
     const obj = getObj(state.dragTarget);
     if (obj && obj.type === 'point') {
@@ -1468,6 +1607,42 @@ canvas.addEventListener('mousemove', e => {
 canvas.addEventListener('mouseup', e => {
   if (state.isPanning) { state.isPanning = false; canvas.style.cursor = (state.tool === 'select' || state.tool === 'lasso') ? 'default' : 'crosshair'; }
   if (state.isDragging) { state.isDragging = false; state.dragTarget = null; saveUndo(); }
+  if (state.isDraggingGroup) {
+    const fg = state.figureGroups.find(g => g.id === state.isDraggingGroup);
+    if (fg) {
+      const pivot = state.objects.find(o => o.id === fg.pivotId);
+      if (pivot) {
+        const zone = getGroupZoneAt(pivot.x, pivot.y);
+        const zoneId = zone ? zone.id : null;
+        // Check tolerance for green
+        const dx = pivot.x - (fg.targetX || 0), dy = pivot.y - (fg.targetY || 0);
+        const tol = fg.tolerance || 1;
+        const inTarget = zoneId === fg.targetZoneId;
+        const close = Math.hypot(dx, dy) <= tol;
+        if (inTarget && close) {
+          if (zone) zone.state = 'green';
+          // Snap to exact target position
+          const ddx = fg.targetX - pivot.x, ddy = fg.targetY - pivot.y;
+          pivot.x = fg.targetX; pivot.y = fg.targetY;
+          fg.objectIds.forEach(oid => {
+            const o = state.objects.find(ob => ob.id === oid);
+            if (!o) return;
+            if (o.x != null) { o.x += ddx; o.y += ddy; }
+            if (o.x1 != null) { o.x1 += ddx; o.y1 += ddy; o.x2 += ddx; o.y2 += ddy; }
+          });
+        } else if (inTarget) {
+          if (zone) zone.state = 'yellow';
+        } else {
+          state.zones.forEach(z => { if (z.state !== 'green') z.state = 'active'; });
+        }
+        if (state.groupMovedCallback) state.groupMovedCallback(fg.id, zoneId, pivot.x, pivot.y);
+        saveUndo();
+      }
+    }
+    state.isDraggingGroup = null; state.groupDragOffset = null; state.groupDragOrigPos = null;
+    canvas.style.cursor = 'default';
+    render();
+  }
   if (state.isLasso && state.lassoStart && state.lassoEnd) {
     const x1 = Math.min(state.lassoStart.cx, state.lassoEnd.cx);
     const y1 = Math.min(state.lassoStart.cy, state.lassoEnd.cy);
@@ -2026,21 +2201,52 @@ const geoApp = {
   },
 
   setZoneState(zoneId, zoneState) {
+    const z = state.zones.find(z => z.id === zoneId);
+    if (z) { z.state = zoneState; render(); }
+    // Also update HTML div if present (legacy)
     const el = document.getElementById(zoneId);
-    if (!el) return;
-    el.dataset.state = zoneState;
-    el.className = el.className.replace(/\bzone-state-\S+/g, '');
-    el.classList.add('zone-state-' + zoneState);
+    if (el) { el.dataset.state = zoneState; el.className = el.className.replace(/\bzone-state-\S+/g, ''); el.classList.add('zone-state-' + zoneState); }
   },
 
   showZones() {
+    state.zonesVisible = true; render();
     const el = document.getElementById('ex-zones');
     if (el) el.style.display = '';
   },
 
   hideZones() {
+    state.zonesVisible = false; render();
     const el = document.getElementById('ex-zones');
     if (el) el.style.display = 'none';
+  },
+
+  defineZones(activeZoneIds, zoneW, zoneH, gap) {
+    state.zones = buildZoneLayout(activeZoneIds || [], zoneW, zoneH, gap);
+    state.zonesVisible = activeZoneIds && activeZoneIds.length > 0;
+    render();
+  },
+
+  defineFigureGroup(groupId, objectIds, pivotLabel, targetZoneId, targetX, targetY, tolerance) {
+    const pivot = state.objects.find(o => o.label === pivotLabel || o.id === pivotLabel);
+    // Remove existing group with same id
+    state.figureGroups = state.figureGroups.filter(g => g.id !== groupId);
+    state.figureGroups.push({
+      id: groupId, label: groupId,
+      objectIds: objectIds || [],
+      pivotId: pivot ? pivot.id : pivotLabel,
+      targetZoneId: targetZoneId || null,
+      targetX: targetX || 0, targetY: targetY || 0,
+      tolerance: tolerance || 1
+    });
+    render();
+  },
+
+  clearFigureGroups() {
+    state.figureGroups = []; render();
+  },
+
+  onGroupMoved(callback) {
+    state.groupMovedCallback = callback;
   },
 
   // ── evalCommand ───────────────────────────────────
