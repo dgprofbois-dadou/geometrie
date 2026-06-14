@@ -1856,6 +1856,14 @@ const geoApp = {
   setValue(name, val) { geoVars[name] = val; },
   getValue(name) { return geoVars[name]; },
 
+  setAvailableTools(toolNames) {
+    const tools = new Set(toolNames);
+    document.querySelectorAll('.tool-btn[data-tool]').forEach(btn => {
+      const show = tools.size === 0 || tools.has(btn.dataset.tool);
+      btn.style.display = show ? '' : 'none';
+    });
+  },
+
   setMode(mode) {
     const map = { 0: 'select', 10: 'point', 15: 'segment' };
     const tool = map[mode];

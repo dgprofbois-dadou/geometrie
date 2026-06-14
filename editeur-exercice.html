@@ -182,7 +182,16 @@
       background: var(--surface);
       border-bottom: 1px solid var(--border);
       flex-shrink: 0;
+      overflow-x: auto;
+      flex-wrap: nowrap;
+      scrollbar-width: thin;
     }
+    .ctool-btn.role-active {
+      background: var(--highlight);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    #canvas-container { flex: 1; position: relative; overflow: hidden; }
 
     .ctool-btn {
       display: flex;
@@ -234,7 +243,7 @@
     }
     #canvas-hint.visible { opacity: 1; }
 
-    #editor-canvas { display: block; flex: 1; cursor: crosshair; }
+    #geo-canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
 
     /* ── Right panel ── */
     #right-panel {
@@ -754,7 +763,11 @@
       </span>
     </div>
 
-    <canvas id="geo-canvas"></canvas>
+    <div id="canvas-container">
+      <canvas id="geo-canvas"></canvas>
+      <div id="canvas-info">x = 0.00 · y = 0.00</div>
+      <div id="canvas-hint"></div>
+    </div>
     <!-- Helper elements required by geometry.js (hidden) -->
     <span id="coords-display" style="display:none"></span>
     <span id="zoom-level" style="display:none"></span>
@@ -766,8 +779,6 @@
     <button id="btn-zoom-in" style="display:none"></button>
     <button id="btn-zoom-out" style="display:none"></button>
     <button id="btn-zoom-fit" style="display:none"></button>
-    <div id="canvas-info">x = 0.00 · y = 0.00</div>
-    <div id="canvas-hint"></div>
   </div>
 
   <!-- ── RIGHT: Questions ── -->
@@ -778,6 +789,13 @@
     </div>
 
     <div id="questions-list"></div>
+
+    <!-- Palette de l'élève -->
+    <div class="panel-section" id="student-tools-section">
+      <h3>Palette de l'élève</h3>
+      <div style="font-size:10px;color:var(--text-muted);margin-bottom:8px">Outils disponibles lors de l'exercice :</div>
+      <div id="student-tools-grid" style="display:flex;flex-wrap:wrap;gap:4px"></div>
+    </div>
 
     <!-- Panneau propriétés objet sélectionné -->
     <div id="obj-props-panel" style="display:none">
@@ -853,6 +871,7 @@
   </div>
 </div>
 
+<script src="geometry.js"></script>
 <script>
 'use strict';
 
@@ -868,12 +887,14 @@ const exerciseData = {
   refColor: '#f38ba8',
   gridUnit: 1,
   initialZoom: 60,
+  allowedTools: [],
   questions: []  // array of Question objects
 };
 
 // Question shape:
-// { id, num, instructions, activeZones: Set, refObjects: [] }
-// refObject: { type:'point'|'segment', ...coords, id }
+// { id, num, instructions, activeZones: Set, tolerance, pointsPerCorrect,
+//   geoState: [], roleMap: { objId -> 'given'|'expected' } }
+// geoState = serialized geometry.js state.objects for this question.
 
 let nextObjId = 1;
 let currentQuestionId = null;
@@ -898,181 +919,129 @@ function genId() { return ++nextObjId; }
 function currentQuestion() { return exerciseData.questions.find(q => q.id === currentQuestionId) || null; }
 
 // ══════════════════════════════════════════════════════
-// MINI CANVAS ENGINE
+// GEOMETRY.JS INTEGRATION  (canvas powered by geometry.js)
 // ══════════════════════════════════════════════════════
+// state, render, deleteObject, geoApp are globals from geometry.js.
 
-const canvas = document.getElementById('editor-canvas');
-const ctx = canvas.getContext('2d');
-
-const edState = {
-  tool: 'select',
-  objects: [],      // shared across all questions? No — per question
-  scale: 60,
-  ox: 0, oy: 0,
-  showGrid: true,
-  showAxes: true,
-  isPanning: false,
-  panStart: null,
-  isDragging: false,
-  dragTarget: null,
-  dragOffset: null,
-  hover: null,
-  tempPoints: [],   // for segment tool
-  selected: null    // selected object id
-};
-
-function w2c(wx, wy) {
-  return {
-    x: canvas.width / 2 + (wx - edState.ox) * edState.scale,
-    y: canvas.height / 2 - (wy - edState.oy) * edState.scale
-  };
+const COLOR_GIVEN = '#f9e2af';
+function refColor() {
+  return document.getElementById('opt-ref-color').value || '#f38ba8';
 }
 
-function c2w(cx, cy) {
-  return {
-    x: edState.ox + (cx - canvas.width / 2) / edState.scale,
-    y: edState.oy - (cy - canvas.height / 2) / edState.scale
-  };
-}
+// Rôle courant pour les nouveaux objets
+let _currentRole = 'expected';
 
-function snapW(wx, wy) {
-  const unit = parseFloat(document.getElementById('opt-grid').value) || 1;
-  return { x: Math.round(wx / unit) * unit, y: Math.round(wy / unit) * unit };
-}
-
+// All objects of the current geometry scene (excluding internal __ objects)
 function getRefObjects() {
+  return state.objects.filter(o => !o.label.startsWith('__'));
+}
+
+function getRole(objId) {
   const q = currentQuestion();
-  return q ? q.refObjects : [];
+  return q && q.roleMap && q.roleMap[objId] ? q.roleMap[objId] : 'expected';
 }
 
-// ── Hit testing ───────────────────────────────────
-const HIT = 8;
-
-function hitPoint(obj, cx, cy) {
-  const c = w2c(obj.x, obj.y);
-  return Math.hypot(cx - c.x, cy - c.y) <= HIT;
+function applyRoleColor(obj, role) {
+  obj.color = role === 'given' ? COLOR_GIVEN : refColor();
 }
 
-function hitSegment(obj, cx, cy) {
-  const p1 = w2c(obj.x1, obj.y1), p2 = w2c(obj.x2, obj.y2);
-  const dx = p2.x - p1.x, dy = p2.y - p1.y;
-  const len2 = dx*dx + dy*dy;
-  if (len2 < 1e-6) return Math.hypot(cx - p1.x, cy - p1.y) <= HIT;
-  const t = Math.max(0, Math.min(1, ((cx-p1.x)*dx + (cy-p1.y)*dy) / len2));
-  return Math.hypot(cx - (p1.x + t*dx), cy - (p1.y + t*dy)) <= HIT;
+function setRole(objId, role) {
+  const q = currentQuestion();
+  if (!q) return;
+  if (!q.roleMap) q.roleMap = {};
+  q.roleMap[objId] = role;
+  const obj = state.objects.find(o => o.id === objId);
+  if (obj) applyRoleColor(obj, role);
+  render();
+  syncRefObjPanel();
+  scheduleSave();
 }
 
-function objectAt(cx, cy) {
-  const objs = getRefObjects();
-  for (let i = objs.length - 1; i >= 0; i--) {
-    const o = objs[i];
-    if (o.type === 'point' && hitPoint(o, cx, cy)) return o;
-    if (o.type === 'segment' && hitSegment(o, cx, cy)) return o;
-  }
-  return null;
+// ── Per-question geometry state ───────────────────
+function saveCurrentGeoState() {
+  const q = currentQuestion();
+  if (!q) return;
+  q.geoState = JSON.parse(JSON.stringify(state.objects));
 }
 
-// ── Render ────────────────────────────────────────
-function render() {
-  const W = canvas.width, H = canvas.height;
-  ctx.clearRect(0, 0, W, H);
-  ctx.fillStyle = '#0f0f1a';
-  ctx.fillRect(0, 0, W, H);
-
-  // Grid
-  if (edState.showGrid) {
-    const unit = parseFloat(document.getElementById('opt-grid').value) || 1;
-    const step = unit * edState.scale;
-    if (step > 8) {
-      ctx.strokeStyle = 'rgba(63,63,90,.5)';
-      ctx.lineWidth = 1;
-      const cx = w2c(0, 0);
-      const startX = cx.x % step;
-      for (let x = startX; x < W; x += step) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
-      const startY = cx.y % step;
-      for (let y = startY; y < H; y += step) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
-    }
-  }
-
-  // Axes
-  if (edState.showAxes) {
-    const o = w2c(0, 0);
-    ctx.strokeStyle = 'rgba(127,132,156,.5)';
-    ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(0, o.y); ctx.lineTo(W, o.y); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(o.x, 0); ctx.lineTo(o.x, H); ctx.stroke();
-  }
-
-  // Couleurs selon le rôle
-  const COLOR_GIVEN    = '#f9e2af'; // jaune = donné (visible dès le début)
-  const COLOR_EXPECTED = document.getElementById('opt-ref-color').value; // rose = à tracer
-
-  // Légende
-  ctx.save();
-  ctx.font = '10px Segoe UI';
-  ctx.fillStyle = COLOR_GIVEN;    ctx.fillRect(8, 8, 10, 10); ctx.fillStyle='#cdd6f4'; ctx.fillText('Donné',    22, 18);
-  ctx.fillStyle = COLOR_EXPECTED; ctx.fillRect(8,24, 10, 10); ctx.fillStyle='#cdd6f4'; ctx.fillText('À tracer', 22, 34);
-  ctx.restore();
-
-  // Ref objects for current question
-  const objs = getRefObjects();
-  for (const obj of objs) {
-    const isSelected = edState.selected === obj.id;
-    const isHover    = edState.hover === obj.id;
-    const color = obj.role === 'given' ? COLOR_GIVEN : COLOR_EXPECTED;
-    const dash  = obj.lineStyle === 'dashed' ? [6, 4] : [];
-
-    ctx.save();
-    if (obj.type === 'point') {
-      const c = w2c(obj.x, obj.y);
-      // Badge de rôle (G / T)
-      ctx.globalAlpha = obj.opacity ?? 1;
-      ctx.fillStyle = color + '33';
-      ctx.beginPath(); ctx.arc(c.x, c.y, 10, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = isSelected ? '#fff' : (obj.color || color);
-      ctx.beginPath(); ctx.arc(c.x, c.y, 5, 0, Math.PI*2); ctx.fill();
-      if (isSelected) {
-        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(c.x, c.y, 8, 0, Math.PI*2); ctx.stroke();
-      }
-      ctx.fillStyle = '#cdd6f4';
-      ctx.font = '11px Segoe UI';
-      ctx.fillText(obj.label, c.x + 8, c.y - 5);
-      ctx.globalAlpha = 1;
-
-    } else if (obj.type === 'segment') {
-      const p1 = w2c(obj.x1, obj.y1), p2 = w2c(obj.x2, obj.y2);
-      const baseColor = obj.role === 'given' ? COLOR_GIVEN : COLOR_EXPECTED;
-      ctx.strokeStyle = isSelected ? '#fff' : (obj.color || baseColor);
-      ctx.lineWidth = isSelected ? 3 : (obj.lineWidth ?? 2);
-      ctx.globalAlpha = obj.opacity ?? 1;
-      ctx.setLineDash(obj.lineStyle === 'dashed' ? [obj.dashLen ?? 8, obj.dashGap ?? 5] : []);
-      ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
-      ctx.globalAlpha = 1;
-      ctx.setLineDash([]);
-      ctx.fillStyle = ctx.strokeStyle;
-      ctx.beginPath(); ctx.arc(p1.x, p1.y, 4, 0, Math.PI*2); ctx.fill();
-      ctx.beginPath(); ctx.arc(p2.x, p2.y, 4, 0, Math.PI*2); ctx.fill();
-    }
-    ctx.restore();
-  }
-
-  // Temp point for segment tool
-  if (edState.tempPoints.length > 0 && edState.tool === 'segment') {
-    const tp = edState.tempPoints[0];
-    const c = w2c(tp.x, tp.y);
-    ctx.fillStyle = color;
-    ctx.beginPath(); ctx.arc(c.x, c.y, 5, 0, Math.PI*2); ctx.fill();
-    if (edState._mousePos) {
-      const mp = w2c(edState._mousePos.x, edState._mousePos.y);
-      ctx.strokeStyle = color + '80';
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([4, 3]);
-      ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.lineTo(mp.x, mp.y); ctx.stroke();
-      ctx.setLineDash([]);
-    }
-  }
+function loadGeoState(q) {
+  state.objects = q && q.geoState ? JSON.parse(JSON.stringify(q.geoState)) : [];
+  state.selected = [];
+  state.tempPoints = [];
+  _selectedObjId = null;
+  hideObjProps();
+  if (typeof evalAll === 'function') evalAll();
+  render();
+  if (typeof updateAlgebra === 'function') updateAlgebra();
 }
+
+// ── Add listener: tag new objects with current role ──
+geoApp.registerAddListener(function(name) {
+  if (name.startsWith('__')) return;
+  const q = currentQuestion();
+  if (!q) return;
+  const obj = state.objects.find(o => o.label === name);
+  if (!obj) return;
+  if (!q.roleMap) q.roleMap = {};
+  q.roleMap[obj.id] = _currentRole;
+  applyRoleColor(obj, _currentRole);
+  render();
+  syncRefObjPanel();
+  syncQuestionList();
+  scheduleSave();
+});
+
+// ── Coordinate readout under the cursor ───────────
+(function() {
+  const cv = document.getElementById('geo-canvas');
+  cv.addEventListener('mousemove', function(e) {
+    const rect = cv.getBoundingClientRect();
+    const wx = state.ox + (e.clientX - rect.left - cv.width / 2) / state.scale;
+    const wy = state.oy - (e.clientY - rect.top - cv.height / 2) / state.scale;
+    const info = document.getElementById('canvas-info');
+    if (info) info.textContent = 'x = ' + wx.toFixed(2) + ' · y = ' + wy.toFixed(2);
+  });
+})();
+
+// ── Role toggle in the canvas toolbar ─────────────
+document.getElementById('ed-role-given').addEventListener('click', () => {
+  _currentRole = 'given';
+  document.getElementById('ed-role-given').classList.add('role-active');
+  document.getElementById('ed-role-expected').classList.remove('role-active');
+});
+document.getElementById('ed-role-expected').addEventListener('click', () => {
+  _currentRole = 'expected';
+  document.getElementById('ed-role-expected').classList.add('role-active');
+  document.getElementById('ed-role-given').classList.remove('role-active');
+});
+
+// ── Grid / axes / zoom buttons → geometry.js ──────
+document.getElementById('ed-btn-grid').addEventListener('click', function() {
+  toggleGrid();
+  this.classList.toggle('active', state.showGrid);
+});
+document.getElementById('ed-btn-axes').addEventListener('click', function() {
+  state.showAxes = !state.showAxes;
+  this.classList.toggle('active', state.showAxes);
+  render();
+});
+document.getElementById('ed-btn-zoom-in').addEventListener('click', () => zoom(1.2));
+document.getElementById('ed-btn-zoom-out').addEventListener('click', () => zoom(1 / 1.2));
+document.getElementById('ed-btn-zoom-fit').addEventListener('click', () => fitView());
+
+document.getElementById('opt-ref-color').addEventListener('input', () => {
+  // Re-apply colours to "expected" objects of the current scene
+  const q = currentQuestion();
+  if (q) {
+    getRefObjects().forEach(o => { if (getRole(o.id) === 'expected') applyRoleColor(o, 'expected'); });
+  }
+  render();
+});
+document.getElementById('opt-grid').addEventListener('change', () => render());
+document.getElementById('opt-zoom').addEventListener('change', function() {
+  state.scale = parseInt(this.value) || 60;
+  render();
+});
 
 // ── Object properties panel ───────────────────────
 let _selectedObjId = null;
@@ -1080,19 +1049,19 @@ let _selectedObjId = null;
 function showObjProps(obj) {
   const panel = document.getElementById('obj-props-panel');
   panel.style.display = 'block';
+  const role = getRole(obj.id);
   document.getElementById('op-label').value = obj.label || '';
-  document.getElementById('op-color').value = obj.color || '#000000';
+  document.getElementById('op-color').value = (obj.color && obj.color[0] === '#') ? obj.color : '#f38ba8';
   document.getElementById('op-lw').value = obj.lineWidth ?? 2;
   document.getElementById('op-lw-val').textContent = obj.lineWidth ?? 2;
   document.getElementById('op-opacity').value = Math.round((obj.opacity ?? 1) * 100);
   document.getElementById('op-opacity-val').textContent = Math.round((obj.opacity ?? 1) * 100) + '%';
-  document.getElementById('op-role-given').classList.toggle('role-active', obj.role === 'given');
-  document.getElementById('op-role-expected').classList.toggle('role-active', obj.role === 'expected');
-  document.getElementById('op-ls-solid').classList.toggle('role-active', obj.lineStyle !== 'dashed');
-  document.getElementById('op-ls-dashed').classList.toggle('role-active', obj.lineStyle === 'dashed');
-  document.getElementById('op-dash-len').value = obj.dashLen ?? 8;
-  document.getElementById('op-gap-len').value = obj.dashGap ?? 5;
-  document.getElementById('op-dash-config').style.display = obj.lineStyle === 'dashed' ? 'flex' : 'none';
+  document.getElementById('op-role-given').classList.toggle('role-active', role === 'given');
+  document.getElementById('op-role-expected').classList.toggle('role-active', role !== 'given');
+  const dashed = obj.lineStyle === 3 || obj.lineStyle === 'dashed';
+  document.getElementById('op-ls-solid').classList.toggle('role-active', !dashed);
+  document.getElementById('op-ls-dashed').classList.toggle('role-active', dashed);
+  document.getElementById('op-dash-config').style.display = 'none';
 }
 
 function hideObjProps() {
@@ -1100,272 +1069,39 @@ function hideObjProps() {
 }
 
 function getSelectedObj() {
-  if (!_selectedObjId) return null;
-  const q = currentQuestion();
-  if (q) {
-    const o = q.refObjects.find(o => o.id === _selectedObjId);
+  if (state.selected && state.selected.length) {
+    const o = state.objects.find(o => o.id === state.selected[0]);
+    if (o) return o;
+  }
+  if (_selectedObjId) {
+    const o = state.objects.find(o => o.id === _selectedObjId);
     if (o) return o;
   }
   return null;
 }
 
-// ── Canvas events ─────────────────────────────────
-let pointLabelCounter = 0;
-function nextPointLabel() {
-  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  const i = pointLabelCounter % 26;
-  const n = Math.floor(pointLabelCounter / 26);
-  pointLabelCounter++;
-  return letters[i] + (n > 0 ? String(n) : '');
-}
-
-function resizeCanvas() {
-  const container = document.getElementById('center-panel');
-  const tb = document.getElementById('canvas-toolbar');
-  canvas.width = container.clientWidth;
-  canvas.height = container.clientHeight - tb.offsetHeight;
-  render();
-}
-
-window.addEventListener('resize', resizeCanvas);
-
-canvas.addEventListener('mousemove', e => {
-  const rect = canvas.getBoundingClientRect();
-  const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
-  const w = c2w(cx, cy);
-  document.getElementById('canvas-info').textContent = `x = ${w.x.toFixed(2)} · y = ${w.y.toFixed(2)}`;
-
-  // Store mouse pos for rubber-band line
-  edState._mousePos = edState.showGrid ? snapW(w.x, w.y) : w;
-
-  // Panning
-  if (edState.isPanning && edState.panStart) {
-    edState.ox -= (cx - edState.panStart.cx) / edState.scale;
-    edState.oy += (cy - edState.panStart.cy) / edState.scale;
-    edState.panStart = { cx, cy };
-    render(); return;
+// Poll selection so the properties panel follows geometry.js selection
+setInterval(() => {
+  const obj = getSelectedObj();
+  if (obj) {
+    if (_selectedObjId !== obj.id) { _selectedObjId = obj.id; showObjProps(obj); }
+  } else if (_selectedObjId !== null) {
+    _selectedObjId = null; hideObjProps();
   }
-
-  // Dragging
-  if (edState.isDragging && edState.dragTarget) {
-    const snapped = edState.showGrid ? snapW(w.x, w.y) : w;
-    const obj = edState.dragTarget;
-    if (obj.type === 'point') {
-      obj.x = snapped.x - edState.dragOffset.dx;
-      obj.y = snapped.y - edState.dragOffset.dy;
-    } else if (obj.type === 'segment') {
-      const dx = snapped.x - edState.dragOffset.x;
-      const dy = snapped.y - edState.dragOffset.y;
-      obj.x1 = edState.dragOffset.x1 + dx;
-      obj.y1 = edState.dragOffset.y1 + dy;
-      obj.x2 = edState.dragOffset.x2 + dx;
-      obj.y2 = edState.dragOffset.y2 + dy;
-    }
-    syncRefObjPanel();
-    render(); return;
-  }
-
-  // Hover
-  const hit = objectAt(cx, cy);
-  edState.hover = hit ? hit.id : null;
-  canvas.style.cursor = edState.tool === 'select'
-    ? (hit ? 'pointer' : 'default')
-    : edState.tool === 'delete' ? (hit ? 'crosshair' : 'not-allowed')
-    : 'crosshair';
-  render();
-});
-
-canvas.addEventListener('mousedown', e => {
-  const rect = canvas.getBoundingClientRect();
-  const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
-  const w = c2w(cx, cy);
-
-  // Middle button or space+drag → pan
-  if (e.button === 1 || (e.button === 0 && e.altKey)) {
-    edState.isPanning = true;
-    edState.panStart = { cx, cy };
-    e.preventDefault(); return;
-  }
-
-  if (e.button !== 0) return;
-
-  const snapped = snapW(w.x, w.y);
-
-  if (edState.tool === 'select') {
-    const hit = objectAt(cx, cy);
-    if (hit) {
-      edState.selected = hit.id;
-      _selectedObjId = hit.id;
-      edState.isDragging = true;
-      if (hit.type === 'point') {
-        edState.dragTarget = hit;
-        edState.dragOffset = { dx: snapped.x - hit.x, dy: snapped.y - hit.y };
-      } else if (hit.type === 'segment') {
-        edState.dragTarget = hit;
-        edState.dragOffset = { x: snapped.x, y: snapped.y, x1: hit.x1, y1: hit.y1, x2: hit.x2, y2: hit.y2 };
-      }
-      showObjProps(hit);
-    } else {
-      edState.selected = null;
-      _selectedObjId = null;
-      hideObjProps();
-    }
-    syncRefObjPanel();
-    render(); return;
-  }
-
-  if (edState.tool === 'delete') {
-    const hit = objectAt(cx, cy);
-    if (hit) removeRefObject(hit.id);
-    return;
-  }
-
-  if (edState.tool === 'point') {
-    if (!currentQuestion()) { showHint('Créez d\'abord une question →'); return; }
-    addRefPoint(snapped.x, snapped.y);
-    return;
-  }
-
-  if (edState.tool === 'segment') {
-    if (!currentQuestion()) { showHint('Créez d\'abord une question →'); return; }
-    if (edState.tempPoints.length === 0) {
-      edState.tempPoints.push({ x: snapped.x, y: snapped.y });
-      showHint('Cliquez pour placer le 2ème point · Échap pour annuler');
-    } else {
-      const p1 = edState.tempPoints[0];
-      addRefSegment(p1.x, p1.y, snapped.x, snapped.y);
-      edState.tempPoints = [];
-      hideHint();
-    }
-    render(); return;
-  }
-});
-
-canvas.addEventListener('mouseup', () => {
-  edState.isDragging = false;
-  edState.dragTarget = null;
-  edState.isPanning = false;
-});
-
-canvas.addEventListener('mouseleave', () => {
-  edState._mousePos = null;
-  edState.hover = null;
-  render();
-});
-
-canvas.addEventListener('wheel', e => {
-  e.preventDefault();
-  const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
-  edState.scale = Math.max(10, Math.min(400, edState.scale * factor));
-  render();
-}, { passive: false });
-
-canvas.addEventListener('contextmenu', e => e.preventDefault());
-
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { edState.tempPoints = []; hideHint(); render(); }
-  if (e.key === 'Delete' || e.key === 'Backspace') {
-    if (edState.selected && document.activeElement === document.body) {
-      removeRefObject(edState.selected);
-      edState.selected = null;
-    }
-  }
-});
-
-// Keyboard shortcuts for tools
-document.addEventListener('keydown', e => {
-  if (document.activeElement !== document.body && document.activeElement !== canvas) return;
-  const map = { s: 'select', p: 'point', g: 'segment', d: 'delete' };
-  if (map[e.key.toLowerCase()]) setTool(map[e.key.toLowerCase()]);
-});
-
-function showHint(msg) {
-  const el = document.getElementById('canvas-hint');
-  el.textContent = msg;
-  el.classList.add('visible');
-}
-function hideHint() {
-  document.getElementById('canvas-hint').classList.remove('visible');
-}
-
-// ── Tool buttons ──────────────────────────────────
-function setTool(tool) {
-  edState.tool = tool;
-  edState.tempPoints = [];
-  document.querySelectorAll('[data-mode]').forEach(b => b.classList.remove('active'));
-  const btn = document.querySelector(`[data-mode="${tool}"]`);
-  if (btn) btn.classList.add('active');
-  hideHint();
-  render();
-}
-
-document.querySelectorAll('[data-mode]').forEach(btn => {
-  btn.addEventListener('click', () => setTool(btn.dataset.mode));
-});
-
-document.getElementById('btn-toggle-grid').addEventListener('click', function() {
-  edState.showGrid = !edState.showGrid;
-  this.classList.toggle('active', edState.showGrid);
-  render();
-});
-
-document.getElementById('btn-toggle-axes').addEventListener('click', function() {
-  edState.showAxes = !edState.showAxes;
-  this.classList.toggle('active', edState.showAxes);
-  render();
-});
-
-document.getElementById('btn-zoom-in').addEventListener('click', () => {
-  edState.scale = Math.min(400, edState.scale * 1.3); render();
-});
-document.getElementById('btn-zoom-out').addEventListener('click', () => {
-  edState.scale = Math.max(10, edState.scale / 1.3); render();
-});
-document.getElementById('btn-zoom-fit').addEventListener('click', () => {
-  edState.ox = 0; edState.oy = 0; edState.scale = 60; render();
-});
-
-document.getElementById('opt-ref-color').addEventListener('input', () => render());
-document.getElementById('opt-grid').addEventListener('change', () => render());
-document.getElementById('opt-zoom').addEventListener('change', function() {
-  edState.scale = parseInt(this.value); render();
-});
+}, 200);
 
 // ══════════════════════════════════════════════════════
 // REF OBJECT MANAGEMENT
 // ══════════════════════════════════════════════════════
 
-// Rôle courant pour les nouveaux objets (toggle dans la toolbar canvas)
-let _currentRole = 'expected';
-let _currentLineStyle = 'solid';
-
-function defaultObjProps() {
-  return { role: _currentRole, lineStyle: _currentLineStyle, color: '', lineWidth: 2, opacity: 1, dashLen: 8, dashGap: 5 };
-}
-
-function addRefPoint(x, y) {
+// Thin wrapper for the "remove from list" button in the right panel
+function removeRefObject(objId) {
   const q = currentQuestion();
   if (!q) return;
-  const label = nextPointLabel();
-  const obj = { type: 'point', id: genId(), label, x, y, ...defaultObjProps() };
-  q.refObjects.push(obj);
-  syncRefObjPanel(); syncQuestionList(); render();
-}
-
-function addRefSegment(x1, y1, x2, y2) {
-  const q = currentQuestion();
-  if (!q) return;
-  const label = 's' + (q.refObjects.filter(o => o.type === 'segment').length + 1);
-  const obj = { type: 'segment', id: genId(), label, x1, y1, x2, y2, ...defaultObjProps() };
-  q.refObjects.push(obj);
-  syncRefObjPanel(); syncQuestionList(); render();
-}
-
-function removeRefObject(id) {
-  const q = currentQuestion();
-  if (!q) return;
-  q.refObjects = q.refObjects.filter(o => o.id !== id);
-  if (edState.selected === id) edState.selected = null;
+  const obj = state.objects.find(o => o.id === objId);
+  if (obj) geoApp.deleteObject(obj.label);
+  if (q.roleMap) delete q.roleMap[objId];
+  if (_selectedObjId === objId) { _selectedObjId = null; hideObjProps(); }
   syncRefObjPanel();
   syncQuestionList();
   render();
@@ -1386,7 +1122,8 @@ function addQuestion() {
     activeZones: new Set(['zone-center']),
     tolerance: 0.5,
     pointsPerCorrect: 1,
-    refObjects: []
+    geoState: [],
+    roleMap: {}
   };
   exerciseData.questions.push(q);
   selectQuestion(q.id);
@@ -1410,13 +1147,14 @@ function deleteQuestion(id) {
 }
 
 function selectQuestion(id) {
+  saveCurrentGeoState(); // save before switching
   currentQuestionId = id;
   syncQuestionList();
   renderQuestionEditor();
   // Update canvas label
   const q = currentQuestion();
   document.getElementById('canvas-q-label').textContent = q ? 'Q' + q.num : '';
-  render();
+  if (q) loadGeoState(q);
 }
 
 function syncTotalQuestions() {
@@ -1434,7 +1172,7 @@ function syncQuestionList() {
     div.innerHTML = `
       <span class="q-item-num">Q${q.num}</span>
       <span class="q-item-title">${q.instructions || '(sans consigne)'}</span>
-      <span class="q-item-obj-count">${q.refObjects.length} obj.</span>
+      <span class="q-item-obj-count">${(q.id === currentQuestionId ? getRefObjects().length : (q.geoState ? q.geoState.filter(o => !o.label.startsWith('__')).length : 0))} obj.</span>
       <button class="q-delete" title="Supprimer">✕</button>
     `;
     div.addEventListener('click', e => {
@@ -1489,9 +1227,6 @@ function renderQuestionEditor() {
       <span style="font-size:10px;color:var(--text-muted)">Prochain objet :</span>
       <button class="role-btn ${_currentRole==='given'?'role-active':''}"    id="toggle-role-given">Donné</button>
       <button class="role-btn ${_currentRole==='expected'?'role-active':''}" id="toggle-role-expected">À tracer</button>
-      <span style="font-size:10px;color:var(--text-muted);margin-left:4px">Style :</span>
-      <button class="ls-btn ${_currentLineStyle==='solid'?'ls-active':''}"   id="toggle-ls-solid">—</button>
-      <button class="ls-btn ${_currentLineStyle==='dashed'?'ls-active':''}"  id="toggle-ls-dashed">- -</button>
     </div>
     <div id="ref-objects-list">
       ${buildRefObjList(q)}
@@ -1517,22 +1252,16 @@ function renderQuestionEditor() {
     q.pointsPerCorrect = parseFloat(this.value) ?? 1;
   });
 
-  // Toggles rôle / style courant
+  // Toggles rôle courant
+  function syncRoleButtons() {
+    document.getElementById('ed-role-given').classList.toggle('role-active', _currentRole === 'given');
+    document.getElementById('ed-role-expected').classList.toggle('role-active', _currentRole === 'expected');
+  }
   document.getElementById('toggle-role-given').addEventListener('click', () => {
-    _currentRole = 'given';
-    renderQuestionEditor();
+    _currentRole = 'given'; syncRoleButtons(); renderQuestionEditor();
   });
   document.getElementById('toggle-role-expected').addEventListener('click', () => {
-    _currentRole = 'expected';
-    renderQuestionEditor();
-  });
-  document.getElementById('toggle-ls-solid').addEventListener('click', () => {
-    _currentLineStyle = 'solid';
-    renderQuestionEditor();
-  });
-  document.getElementById('toggle-ls-dashed').addEventListener('click', () => {
-    _currentLineStyle = 'dashed';
-    renderQuestionEditor();
+    _currentRole = 'expected'; syncRoleButtons(); renderQuestionEditor();
   });
 
   document.querySelectorAll('.zone-cb').forEach(cb => {
@@ -1561,11 +1290,24 @@ function renderQuestionEditor() {
 
   document.getElementById('q-clear-objs').addEventListener('click', () => {
     if (!confirm('Supprimer tous les objets de référence de cette question ?')) return;
-    q.refObjects = [];
+    getRefObjects().forEach(o => geoApp.deleteObject(o.label));
+    if (q.roleMap) q.roleMap = {};
     syncRefObjPanel();
     syncQuestionList();
     render();
   });
+}
+
+// ── Canvas hint helpers ───────────────────────────
+function showHint(msg) {
+  const el = document.getElementById('canvas-hint');
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.add('visible');
+}
+function hideHint() {
+  const el = document.getElementById('canvas-hint');
+  if (el) el.classList.remove('visible');
 }
 
 function buildZoneChecks(q) {
@@ -1597,24 +1339,32 @@ function buildZoneChecks(q) {
   return html;
 }
 
-function buildRefObjList(q) {
-  if (q.refObjects.length === 0) {
-    return '<div class="empty-objects">Aucun objet — dessinez sur le canvas ou cliquez sur + ci-dessous.</div>';
+function objCoordsLabel(obj) {
+  if (obj.x !== undefined && obj.y !== undefined) {
+    return `(${obj.x.toFixed(1)}, ${obj.y.toFixed(1)})`;
   }
-  return q.refObjects.map(obj => {
-    const role = obj.role || 'expected';
-    const ls   = obj.lineStyle || 'solid';
-    const coords = obj.type === 'point'
-      ? `(${obj.x.toFixed(1)}, ${obj.y.toFixed(1)})`
-      : `(${obj.x1.toFixed(1)},${obj.y1.toFixed(1)})→(${obj.x2.toFixed(1)},${obj.y2.toFixed(1)})`;
+  if (obj.p1id && obj.p2id) {
+    const p1 = state.objects.find(o => o.id === obj.p1id);
+    const p2 = state.objects.find(o => o.id === obj.p2id);
+    if (p1 && p2) return `(${p1.x.toFixed(1)},${p1.y.toFixed(1)})→(${p2.x.toFixed(1)},${p2.y.toFixed(1)})`;
+  }
+  return obj.type || '';
+}
+
+function buildRefObjList(q) {
+  const objs = getRefObjects();
+  if (objs.length === 0) {
+    return '<div class="empty-objects">Aucun objet — dessinez sur le canvas avec les outils.</div>';
+  }
+  return objs.map(obj => {
+    const role = getRole(obj.id);
+    const coords = objCoordsLabel(obj);
     return `<div class="ref-obj-item" data-id="${obj.id}">
       <span style="font-weight:700;min-width:22px;font-size:11px;color:${role==='given'?'#f9e2af':'#f38ba8'}">${obj.label}</span>
       <div style="display:flex;flex-direction:column;gap:2px;flex:1">
         <div style="display:flex;gap:3px">
           <button class="role-btn ${role==='given'?'role-active':''}" data-id="${obj.id}" data-role="given"  title="Donné (visible au départ)">Donné</button>
           <button class="role-btn ${role==='expected'?'role-active':''}" data-id="${obj.id}" data-role="expected" title="À tracer par l'élève">À tracer</button>
-          <button class="ls-btn ${ls==='solid'?'ls-active':''}"   data-id="${obj.id}" data-ls="solid"  title="Trait plein">—</button>
-          <button class="ls-btn ${ls==='dashed'?'ls-active':''}"  data-id="${obj.id}" data-ls="dashed" title="Trait tirets">- -</button>
         </div>
         <span class="ref-obj-coords">${coords}</span>
       </div>
@@ -1632,21 +1382,12 @@ function syncRefObjPanel() {
   listEl.querySelectorAll('.ref-obj-del-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       removeRefObject(parseInt(btn.dataset.id));
-      renderQuestionEditor();
     });
   });
 
   listEl.querySelectorAll('.role-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      const obj = q && q.refObjects.find(o => o.id === parseInt(btn.dataset.id));
-      if (obj) { obj.role = btn.dataset.role; syncRefObjPanel(); render(); scheduleSave(); }
-    });
-  });
-
-  listEl.querySelectorAll('.ls-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const obj = q && q.refObjects.find(o => o.id === parseInt(btn.dataset.id));
-      if (obj) { obj.lineStyle = btn.dataset.ls; syncRefObjPanel(); render(); scheduleSave(); }
+      setRole(parseInt(btn.dataset.id), btn.dataset.role);
     });
   });
 
@@ -1693,21 +1434,40 @@ document.getElementById('btn-add-question').addEventListener('click', addQuestio
 // ══════════════════════════════════════════════════════
 
 function buildExerciseData() {
+  saveCurrentGeoState(); // ensure current question is saved
+
   const questions = exerciseData.questions.map(q => {
-    const given    = q.refObjects.filter(o => o.role === 'given');
-    const expected = q.refObjects.filter(o => o.role !== 'given'); // 'expected' ou undefined
+    const objs = (q.geoState || []).filter(o => !o.label.startsWith('__'));
+    const roleMap = q.roleMap || {};
+
+    const given    = objs.filter(o => roleMap[o.id] === 'given');
+    const expected = objs.filter(o => roleMap[o.id] !== 'given');
+
+    const givenPoints = given.filter(o => o.type === 'point' || o.type === 'midpoint').map(o => ({
+      label: o.label, x: o.x, y: o.y, color: o.color || '', lineWidth: o.lineWidth ?? 2
+    }));
+    const givenSegments = given.filter(o => o.type === 'segment').map(o => {
+      const p1 = objs.find(p => p.id === o.p1id);
+      const p2 = objs.find(p => p.id === o.p2id);
+      if (!p1 || !p2) return null;
+      return { label: o.label, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y, color: o.color || '', lineWidth: o.lineWidth ?? 2, lineStyle: o.lineStyle === 3 ? 'dashed' : 'solid' };
+    }).filter(Boolean);
+    const expectedPoints = expected.filter(o => o.type === 'point' || o.type === 'midpoint').map(o => ({ label: o.label, x: o.x, y: o.y }));
+    const expectedSegments = expected.filter(o => o.type === 'segment').map(o => {
+      const p1 = objs.find(p => p.id === o.p1id);
+      const p2 = objs.find(p => p.id === o.p2id);
+      if (!p1 || !p2) return null;
+      return { label: o.label, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
+    }).filter(Boolean);
+
     return {
       num: q.num,
       instructions: q.instructions,
-      activeZones: [...q.activeZones],
-      tolerance: q.tolerance,
+      activeZones: [...(q.activeZones || [])],
+      tolerance: q.tolerance || 0.5,
       pointsPerCorrect: q.pointsPerCorrect ?? 1,
-      // Objets donnés : visibles dès le début, fixes
-      givenPoints:   given.filter(o => o.type === 'point').map(o   => ({ label: o.label, x: o.x, y: o.y, lineStyle: o.lineStyle||'solid', color: o.color||null, lineWidth: o.lineWidth??2, opacity: o.opacity??1 })),
-      givenSegments: given.filter(o => o.type === 'segment').map(o => ({ label: o.label, x1: o.x1, y1: o.y1, x2: o.x2, y2: o.y2, lineStyle: o.lineStyle||'solid', dashLen: o.dashLen??8, dashGap: o.dashGap??5, color: o.color||null, lineWidth: o.lineWidth??2, opacity: o.opacity??1 })),
-      // Objets à tracer : utilisés uniquement pour la correction
-      expectedPoints:   expected.filter(o => o.type === 'point').map(o   => ({ label: o.label, x: o.x, y: o.y })),
-      expectedSegments: expected.filter(o => o.type === 'segment').map(o => ({ label: o.label, x1: o.x1, y1: o.y1, x2: o.x2, y2: o.y2 }))
+      allowedTools: q.allowedTools || exerciseData.allowedTools || [],
+      givenPoints, givenSegments, expectedPoints, expectedSegments
     };
   });
 
@@ -1720,6 +1480,7 @@ function buildExerciseData() {
     imageUrl: exerciseData.imageUrl,
     totalQuestions: exerciseData.questions.length,
     maxScore,
+    allowedTools: exerciseData.allowedTools || [],
     initialZoom: parseInt(document.getElementById('opt-zoom').value) || 60,
     questions
   };
@@ -1911,6 +1672,9 @@ function generateJS(data) {
   };
 
   // ── Initial setup ─────────────────────────────────
+  if (EXERCISE.allowedTools && EXERCISE.allowedTools.length > 0 && geoApp.setAvailableTools) {
+    geoApp.setAvailableTools(EXERCISE.allowedTools);
+  }
   geoApp.setupExercise({
     title: EXERCISE.title,
     instructions: EXERCISE.questions.length > 0 ? EXERCISE.questions[0].instructions : EXERCISE.globalInstructions,
@@ -1973,10 +1737,12 @@ document.getElementById('json-modal').addEventListener('click', function(e) {
 const STORAGE_KEY = 'geoapp_editeur_v1';
 
 function serializeState() {
+  saveCurrentGeoState();
   return {
     title: exerciseData.title,
     globalInstructions: exerciseData.globalInstructions,
     imageUrl: exerciseData.imageUrl,
+    allowedTools: exerciseData.allowedTools || [],
     refColor: document.getElementById('opt-ref-color').value,
     gridUnit: document.getElementById('opt-grid').value,
     initialZoom: document.getElementById('opt-zoom').value,
@@ -1986,11 +1752,12 @@ function serializeState() {
       instructions: q.instructions,
       activeZones: [...q.activeZones],
       tolerance: q.tolerance,
-      refObjects: q.refObjects
+      pointsPerCorrect: q.pointsPerCorrect ?? 1,
+      geoState: q.geoState || [],
+      roleMap: q.roleMap || {}
     })),
     currentQuestionId,
-    nextObjId,
-    pointLabelCounter
+    nextObjId
   };
 }
 
@@ -2002,6 +1769,7 @@ function deserializeState(data) {
   document.getElementById('ex-title').value = exerciseData.title;
   document.getElementById('ex-global-instructions').value = exerciseData.globalInstructions;
   document.getElementById('ex-image-url').value = exerciseData.imageUrl;
+  exerciseData.allowedTools = data.allowedTools || [];
   if (data.refColor) document.getElementById('opt-ref-color').value = data.refColor;
   if (data.gridUnit) document.getElementById('opt-grid').value = data.gridUnit;
   if (data.initialZoom) document.getElementById('opt-zoom').value = data.initialZoom;
@@ -2013,7 +1781,6 @@ function deserializeState(data) {
   }
 
   if (data.nextObjId) nextObjId = data.nextObjId;
-  if (data.pointLabelCounter !== undefined) pointLabelCounter = data.pointLabelCounter;
 
   exerciseData.questions = (data.questions || []).map(q => ({
     id: q.id,
@@ -2021,18 +1788,27 @@ function deserializeState(data) {
     instructions: q.instructions || '',
     activeZones: new Set(q.activeZones || ['zone-center']),
     tolerance: q.tolerance || 0.5,
-    refObjects: q.refObjects || []
+    pointsPerCorrect: q.pointsPerCorrect ?? 1,
+    geoState: q.geoState || [],
+    roleMap: q.roleMap || {}
   }));
 
   questionCounter = exerciseData.questions.length;
 
+  // Ensure geometry.js id counter is ahead of restored object ids
+  let maxId = 0;
+  exerciseData.questions.forEach(q => (q.geoState || []).forEach(o => { if (o.id > maxId) maxId = o.id; }));
+  if (typeof nextId !== 'undefined' && maxId >= nextId) nextId = maxId + 1;
+
   if (exerciseData.questions.length > 0) {
     const targetId = data.currentQuestionId || exerciseData.questions[0].id;
+    currentQuestionId = null; // prevent saveCurrentGeoState from clobbering
     selectQuestion(targetId);
   }
 
   syncQuestionList();
   syncTotalQuestions();
+  initStudentToolsPanel();
   render();
 }
 
@@ -2109,22 +1885,22 @@ document.getElementById('op-opacity').addEventListener('input', e => {
 });
 document.getElementById('op-role-given').addEventListener('click', () => {
   const obj = getSelectedObj(); if (!obj) return;
-  obj.role = 'given';
-  showObjProps(obj); render(); syncRefObjPanel(); scheduleSave();
+  setRole(obj.id, 'given');
+  showObjProps(obj);
 });
 document.getElementById('op-role-expected').addEventListener('click', () => {
   const obj = getSelectedObj(); if (!obj) return;
-  obj.role = 'expected';
-  showObjProps(obj); render(); syncRefObjPanel(); scheduleSave();
+  setRole(obj.id, 'expected');
+  showObjProps(obj);
 });
 document.getElementById('op-ls-solid').addEventListener('click', () => {
   const obj = getSelectedObj(); if (!obj) return;
-  obj.lineStyle = 'solid';
+  obj.lineStyle = 1;
   showObjProps(obj); render(); syncRefObjPanel(); scheduleSave();
 });
 document.getElementById('op-ls-dashed').addEventListener('click', () => {
   const obj = getSelectedObj(); if (!obj) return;
-  obj.lineStyle = 'dashed';
+  obj.lineStyle = 3;
   showObjProps(obj); render(); syncRefObjPanel(); scheduleSave();
 });
 document.getElementById('op-dash-len').addEventListener('input', e => {
@@ -2139,9 +1915,60 @@ document.getElementById('op-gap-len').addEventListener('input', e => {
 });
 
 // ══════════════════════════════════════════════════════
+// STUDENT TOOLS PANEL
+// ══════════════════════════════════════════════════════
+const ALL_TOOLS = [
+  { key: 'select', label: 'Sélect.' },
+  { key: 'point', label: 'Point' },
+  { key: 'midpoint', label: 'Milieu' },
+  { key: 'intersect', label: 'Intersect.' },
+  { key: 'segment', label: 'Segment' },
+  { key: 'line', label: 'Droite' },
+  { key: 'ray', label: 'Demi-dr.' },
+  { key: 'vector', label: 'Vecteur' },
+  { key: 'parallel', label: 'Parallèle' },
+  { key: 'perpendicular', label: 'Perp.' },
+  { key: 'perp-bisector', label: 'Méd.' },
+  { key: 'angle-bisector', label: 'Bissecter.' },
+  { key: 'polygon', label: 'Polygone' },
+  { key: 'triangle', label: 'Triangle' },
+  { key: 'rectangle', label: 'Rectangle' },
+  { key: 'circle-center-point', label: 'Cercle' },
+  { key: 'circle-3points', label: 'Cercle 3pt' },
+  { key: 'semicircle', label: 'Demi-cerc.' },
+  { key: 'arc', label: 'Arc' },
+  { key: 'angle', label: 'Angle' },
+  { key: 'distance', label: 'Distance' },
+  { key: 'reflect-line', label: 'Sym. axe' },
+  { key: 'reflect-point', label: 'Sym. pt.' },
+  { key: 'rotate', label: 'Rotation' },
+  { key: 'translate', label: 'Transl.' },
+  { key: 'text', label: 'Texte' },
+  { key: 'delete', label: 'Suppr.' },
+];
+
+function initStudentToolsPanel() {
+  const grid = document.getElementById('student-tools-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  ALL_TOOLS.forEach(t => {
+    const cb = document.createElement('label');
+    cb.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;background:var(--surface2);padding:3px 8px;border-radius:4px;border:1px solid var(--border)';
+    const checked = !exerciseData.allowedTools || exerciseData.allowedTools.length === 0 || exerciseData.allowedTools.includes(t.key);
+    cb.innerHTML = `<input type="checkbox" data-stool="${t.key}" ${checked ? 'checked' : ''}> ${t.label}`;
+    grid.appendChild(cb);
+  });
+  grid.querySelectorAll('input[data-stool]').forEach(inp => {
+    inp.addEventListener('change', () => {
+      exerciseData.allowedTools = [...grid.querySelectorAll('input[data-stool]:checked')].map(i => i.dataset.stool);
+      scheduleSave();
+    });
+  });
+}
+
+// ══════════════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════════════
-resizeCanvas();
 
 // Restaurer depuis localStorage si disponible, sinon créer une question vide
 const _saved = localStorage.getItem(STORAGE_KEY);
@@ -2153,10 +1980,13 @@ if (_saved) {
   } catch(e) {
     console.warn('Restore failed', e);
     addQuestion();
+    initStudentToolsPanel();
   }
 } else {
   addQuestion();
+  initStudentToolsPanel();
 }
+resizeCanvas();
 </script>
 </body>
 </html>
