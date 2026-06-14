@@ -1951,6 +1951,24 @@ const geoApp = {
       return name;
     }
 
+    // Segment: name = Segment(p1, p2)
+    const segMatch = cmd.match(/^(\w+)\s*=\s*Segment\((\w+)\s*,\s*(\w+)\)$/);
+    if (segMatch) {
+      const [, name, p1name, p2name] = segMatch;
+      const p1 = state.objects.find(o => o.label === p1name);
+      const p2 = state.objects.find(o => o.label === p2name);
+      if (p1 && p2) {
+        const existing = state.objects.find(o => o.label === name);
+        if (existing) { existing.p1id = p1.id; existing.p2id = p2.id; evalAll(); render(); updateAlgebra(); return name; }
+        const seg = { id: uid(), type: 'segment', label: name, color: '#7c9eff', lineWidth: 2, visible: true, fixed: false, p1id: p1.id, p2id: p2.id };
+        state.objects.push(seg);
+        evalAll(); render(); updateAlgebra();
+        _fireAdd(name);
+        return name;
+      }
+      return null;
+    }
+
     // SetDynamicColor(name, r, g, b)
     const colorMatch = cmd.match(/^SetDynamicColor\(\s*(\w+)\s*,\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^)]+)\s*\)$/i);
     if (colorMatch) {

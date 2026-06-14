@@ -905,9 +905,10 @@ function render() {
     if (obj.type === 'point') {
       const c = w2c(obj.x, obj.y);
       // Badge de rôle (G / T)
+      ctx.globalAlpha = obj.opacity ?? 1;
       ctx.fillStyle = color + '33';
       ctx.beginPath(); ctx.arc(c.x, c.y, 10, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = isSelected ? '#fff' : color;
+      ctx.fillStyle = isSelected ? '#fff' : (obj.color || color);
       ctx.beginPath(); ctx.arc(c.x, c.y, 5, 0, Math.PI*2); ctx.fill();
       if (isSelected) {
         ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
@@ -916,13 +917,17 @@ function render() {
       ctx.fillStyle = '#cdd6f4';
       ctx.font = '11px Segoe UI';
       ctx.fillText(obj.label, c.x + 8, c.y - 5);
+      ctx.globalAlpha = 1;
 
     } else if (obj.type === 'segment') {
       const p1 = w2c(obj.x1, obj.y1), p2 = w2c(obj.x2, obj.y2);
-      ctx.strokeStyle = isSelected ? '#fff' : color;
-      ctx.lineWidth = isSelected ? 3 : 2;
-      ctx.setLineDash(dash);
+      const baseColor = obj.role === 'given' ? COLOR_GIVEN : COLOR_EXPECTED;
+      ctx.strokeStyle = isSelected ? '#fff' : (obj.color || baseColor);
+      ctx.lineWidth = isSelected ? 3 : (obj.lineWidth ?? 2);
+      ctx.globalAlpha = obj.opacity ?? 1;
+      ctx.setLineDash(obj.lineStyle === 'dashed' ? [obj.dashLen ?? 8, obj.dashGap ?? 5] : []);
       ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+      ctx.globalAlpha = 1;
       ctx.setLineDash([]);
       ctx.fillStyle = ctx.strokeStyle;
       ctx.beginPath(); ctx.arc(p1.x, p1.y, 4, 0, Math.PI*2); ctx.fill();
@@ -946,6 +951,41 @@ function render() {
       ctx.setLineDash([]);
     }
   }
+}
+
+// ── Object properties panel ───────────────────────
+let _selectedObjId = null;
+
+function showObjProps(obj) {
+  const panel = document.getElementById('obj-props-panel');
+  panel.style.display = 'block';
+  document.getElementById('op-label').value = obj.label || '';
+  document.getElementById('op-color').value = obj.color || '#000000';
+  document.getElementById('op-lw').value = obj.lineWidth ?? 2;
+  document.getElementById('op-lw-val').textContent = obj.lineWidth ?? 2;
+  document.getElementById('op-opacity').value = Math.round((obj.opacity ?? 1) * 100);
+  document.getElementById('op-opacity-val').textContent = Math.round((obj.opacity ?? 1) * 100) + '%';
+  document.getElementById('op-role-given').classList.toggle('role-active', obj.role === 'given');
+  document.getElementById('op-role-expected').classList.toggle('role-active', obj.role === 'expected');
+  document.getElementById('op-ls-solid').classList.toggle('role-active', obj.lineStyle !== 'dashed');
+  document.getElementById('op-ls-dashed').classList.toggle('role-active', obj.lineStyle === 'dashed');
+  document.getElementById('op-dash-len').value = obj.dashLen ?? 8;
+  document.getElementById('op-gap-len').value = obj.dashGap ?? 5;
+  document.getElementById('op-dash-config').style.display = obj.lineStyle === 'dashed' ? 'flex' : 'none';
+}
+
+function hideObjProps() {
+  document.getElementById('obj-props-panel').style.display = 'none';
+}
+
+function getSelectedObj() {
+  if (!_selectedObjId) return null;
+  const q = currentQuestion();
+  if (q) {
+    const o = q.refObjects.find(o => o.id === _selectedObjId);
+    if (o) return o;
+  }
+  return null;
 }
 
 // ── Canvas events ─────────────────────────────────
@@ -1034,6 +1074,7 @@ canvas.addEventListener('mousedown', e => {
     const hit = objectAt(cx, cy);
     if (hit) {
       edState.selected = hit.id;
+      _selectedObjId = hit.id;
       edState.isDragging = true;
       if (hit.type === 'point') {
         edState.dragTarget = hit;
@@ -1042,8 +1083,11 @@ canvas.addEventListener('mousedown', e => {
         edState.dragTarget = hit;
         edState.dragOffset = { x: snapped.x, y: snapped.y, x1: hit.x1, y1: hit.y1, x2: hit.x2, y2: hit.y2 };
       }
+      showObjProps(hit);
     } else {
       edState.selected = null;
+      _selectedObjId = null;
+      hideObjProps();
     }
     syncRefObjPanel();
     render(); return;
@@ -1538,8 +1582,8 @@ function buildExerciseData() {
       tolerance: q.tolerance,
       pointsPerCorrect: q.pointsPerCorrect ?? 1,
       // Objets donnés : visibles dès le début, fixes
-      givenPoints:   given.filter(o => o.type === 'point').map(o   => ({ label: o.label, x: o.x, y: o.y, lineStyle: o.lineStyle||'solid' })),
-      givenSegments: given.filter(o => o.type === 'segment').map(o => ({ label: o.label, x1: o.x1, y1: o.y1, x2: o.x2, y2: o.y2, lineStyle: o.lineStyle||'solid' })),
+      givenPoints:   given.filter(o => o.type === 'point').map(o   => ({ label: o.label, x: o.x, y: o.y, lineStyle: o.lineStyle||'solid', color: o.color||null, lineWidth: o.lineWidth??2, opacity: o.opacity??1 })),
+      givenSegments: given.filter(o => o.type === 'segment').map(o => ({ label: o.label, x1: o.x1, y1: o.y1, x2: o.x2, y2: o.y2, lineStyle: o.lineStyle||'solid', dashLen: o.dashLen??8, dashGap: o.dashGap??5, color: o.color||null, lineWidth: o.lineWidth??2, opacity: o.opacity??1 })),
       // Objets à tracer : utilisés uniquement pour la correction
       expectedPoints:   expected.filter(o => o.type === 'point').map(o   => ({ label: o.label, x: o.x, y: o.y })),
       expectedSegments: expected.filter(o => o.type === 'segment').map(o => ({ label: o.label, x1: o.x1, y1: o.y1, x2: o.x2, y2: o.y2 }))
@@ -1897,6 +1941,65 @@ document.getElementById('btn-test').addEventListener('click', () => {
   } catch(e) {
     alert('Impossible d\'ouvrir le test : ' + e.message);
   }
+});
+
+// ── Wire obj-props-panel inputs ───────────────────
+document.getElementById('obj-props-close').addEventListener('click', () => {
+  _selectedObjId = null;
+  hideObjProps();
+  render();
+});
+document.getElementById('op-label').addEventListener('input', e => {
+  const obj = getSelectedObj(); if (!obj) return;
+  obj.label = e.target.value;
+  render(); syncRefObjPanel(); scheduleSave();
+});
+document.getElementById('op-color').addEventListener('input', e => {
+  const obj = getSelectedObj(); if (!obj) return;
+  obj.color = e.target.value;
+  render(); scheduleSave();
+});
+document.getElementById('op-lw').addEventListener('input', e => {
+  const obj = getSelectedObj(); if (!obj) return;
+  obj.lineWidth = parseFloat(e.target.value);
+  document.getElementById('op-lw-val').textContent = e.target.value;
+  render(); scheduleSave();
+});
+document.getElementById('op-opacity').addEventListener('input', e => {
+  const obj = getSelectedObj(); if (!obj) return;
+  obj.opacity = parseInt(e.target.value) / 100;
+  document.getElementById('op-opacity-val').textContent = e.target.value + '%';
+  render(); scheduleSave();
+});
+document.getElementById('op-role-given').addEventListener('click', () => {
+  const obj = getSelectedObj(); if (!obj) return;
+  obj.role = 'given';
+  showObjProps(obj); render(); syncRefObjPanel(); scheduleSave();
+});
+document.getElementById('op-role-expected').addEventListener('click', () => {
+  const obj = getSelectedObj(); if (!obj) return;
+  obj.role = 'expected';
+  showObjProps(obj); render(); syncRefObjPanel(); scheduleSave();
+});
+document.getElementById('op-ls-solid').addEventListener('click', () => {
+  const obj = getSelectedObj(); if (!obj) return;
+  obj.lineStyle = 'solid';
+  showObjProps(obj); render(); syncRefObjPanel(); scheduleSave();
+});
+document.getElementById('op-ls-dashed').addEventListener('click', () => {
+  const obj = getSelectedObj(); if (!obj) return;
+  obj.lineStyle = 'dashed';
+  showObjProps(obj); render(); syncRefObjPanel(); scheduleSave();
+});
+document.getElementById('op-dash-len').addEventListener('input', e => {
+  const obj = getSelectedObj(); if (!obj) return;
+  obj.dashLen = parseFloat(e.target.value);
+  render(); scheduleSave();
+});
+document.getElementById('op-gap-len').addEventListener('input', e => {
+  const obj = getSelectedObj(); if (!obj) return;
+  obj.dashGap = parseFloat(e.target.value);
+  render(); scheduleSave();
 });
 
 // ══════════════════════════════════════════════════════
