@@ -1391,13 +1391,20 @@ canvas.addEventListener('mousedown', e => {
       showProperties(obj);
       render(); return;
     }
-    // Start lasso selection
-    state.isLasso = true;
-    state.lassoStart = { cx: pos.x, cy: pos.y };
-    state.lassoEnd = { cx: pos.x, cy: pos.y };
-    state.selected = [];
-    canvas.style.cursor = 'crosshair';
-    render(); return;
+    if (e.shiftKey) {
+      // Shift+drag: lasso selection
+      state.isLasso = true;
+      state.lassoStart = { cx: pos.x, cy: pos.y };
+      state.lassoEnd = { cx: pos.x, cy: pos.y };
+      state.selected = [];
+      canvas.style.cursor = 'crosshair';
+      render(); return;
+    }
+    // Start pan with left button if nothing hit
+    state.isPanning = true;
+    state.panStart = { cx: pos.x, cy: pos.y, ox: state.ox, oy: state.oy };
+    canvas.style.cursor = 'grabbing';
+    return;
   }
 
   if (state.tool === 'lasso') {
