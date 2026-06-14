@@ -1286,6 +1286,12 @@ function renderQuestionEditor() {
       <button class="tag-btn" id="q-add-segment">+ Segment</button>
       <button class="tag-btn" id="q-clear-objs" style="color:var(--danger)">✕ Tout effacer</button>
     </div>
+
+    <h4 style="margin-top:10px">Figures déplaçables (Drag &amp; Drop)</h4>
+    <div id="figure-groups-list" style="font-size:11px;margin-bottom:6px">
+      ${buildFigureGroupsList(q)}
+    </div>
+    <button class="tag-btn" id="btn-create-group" title="Sélectionner des objets sur le canvas puis cliquer ici">+ Grouper la sélection</button>
   `;
 
   // Wire inputs
@@ -1346,6 +1352,53 @@ function renderQuestionEditor() {
     syncQuestionList();
     render();
   });
+
+  document.getElementById('btn-create-group').addEventListener('click', () => {
+    const sel = state.selected.slice();
+    if (sel.length === 0) { alert('Sélectionnez d\'abord des objets sur le canvas (outil Sélect. ou Lasso).'); return; }
+    const name = prompt('Nom de la figure :', 'Figure ' + ((q.figureGroups||[]).length + 1));
+    if (!name) return;
+    const activeZoneIds = [...(q.activeZones || ['zone-center'])];
+    const zoneChoice = activeZoneIds.length > 1
+      ? prompt('Zone cible (' + activeZoneIds.map(z => ZONE_LABELS[z]).join(', ') + ') :', ZONE_LABELS[activeZoneIds[0]])
+      : ZONE_LABELS[activeZoneIds[0]];
+    const targetZoneId = activeZoneIds.find(z => ZONE_LABELS[z] === zoneChoice) || activeZoneIds[0];
+    // Compute centroid
+    let cx = 0, cy = 0, n = 0;
+    sel.forEach(id => {
+      const o = state.objects.find(ob => ob.id === id);
+      if (!o) return;
+      if (o.x != null) { cx += o.x; cy += o.y; n++; }
+    });
+    if (n === 0) { alert('Aucun objet positionnable sélectionné.'); return; }
+    cx /= n; cy /= n;
+    // Create pivot point
+    const pivotLabel = '__fg_pivot_' + Date.now();
+    const pivot = { id: uid(), type: 'point', label: pivotLabel, x: cx, y: cy, visible: false, fixed: false, color: '#89b4fa' };
+    state.objects.push(pivot);
+    if (!q.figureGroups) q.figureGroups = [];
+    q.figureGroups.push({ id: 'fg_' + Date.now(), label: name, objectIds: sel, pivotId: pivot.id, pivotLabel, targetZoneId, targetX: cx, targetY: cy, tolerance: q.tolerance || 1 });
+    // Update geometry state
+    saveCurrentGeoState();
+    document.getElementById('figure-groups-list').innerHTML = buildFigureGroupsList(q);
+    wireFigureGroupDelBtns(q);
+    geoApp.defineZones(activeZoneIds, 8, 6, 0.5);
+    render();
+  });
+
+  wireFigureGroupDelBtns(q);
+}
+
+function wireFigureGroupDelBtns(q) {
+  document.querySelectorAll('.fg-del-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+      const fgid = this.dataset.fgid;
+      q.figureGroups = (q.figureGroups || []).filter(fg => fg.id !== fgid);
+      document.getElementById('figure-groups-list').innerHTML = buildFigureGroupsList(q);
+      wireFigureGroupDelBtns(q);
+      saveCurrentGeoState();
+    });
+  });
 }
 
 // ── Canvas hint helpers ───────────────────────────
@@ -1358,6 +1411,18 @@ function showHint(msg) {
 function hideHint() {
   const el = document.getElementById('canvas-hint');
   if (el) el.classList.remove('visible');
+}
+
+function buildFigureGroupsList(q) {
+  if (!q || !q.figureGroups || !q.figureGroups.length) return '<div style="color:var(--text-muted);font-size:10px">Aucun groupe. Sélectionnez des objets puis cliquez "+ Grouper".</div>';
+  return q.figureGroups.map(fg => `
+    <div style="display:flex;align-items:center;gap:6px;padding:4px;border:1px solid var(--border);border-radius:4px;margin-bottom:3px">
+      <span style="color:#89b4fa;font-weight:600">⊕</span>
+      <span style="flex:1">${fg.label}</span>
+      <span style="color:var(--text-muted);font-size:10px">${fg.targetZoneId ? ZONE_LABELS[fg.targetZoneId] : '—'}</span>
+      <button class="tag-btn fg-del-btn" data-fgid="${fg.id}" style="color:var(--danger);padding:1px 5px">✕</button>
+    </div>
+  `).join('');
 }
 
 function buildZoneChecks(q) {
@@ -1517,6 +1582,14 @@ function buildExerciseData() {
       tolerance: q.tolerance || 0.5,
       pointsPerCorrect: q.pointsPerCorrect ?? 1,
       allowedTools: q.allowedTools || exerciseData.allowedTools || [],
+      figureGroups: (q.figureGroups || []).map(fg => ({
+        id: fg.id, label: fg.label,
+        objectIds: fg.objectIds,
+        pivotLabel: fg.pivotLabel,
+        targetZoneId: fg.targetZoneId,
+        targetX: fg.targetX, targetY: fg.targetY,
+        tolerance: fg.tolerance || q.tolerance || 1
+      })),
       givenPoints, givenSegments, expectedPoints, expectedSegments
     };
   });
@@ -1593,15 +1666,23 @@ function generateJS(data) {
     geoApp.setQuestion(q.num, EXERCISE.totalQuestions);
     geoApp.setInstructions(q.instructions || EXERCISE.globalInstructions);
 
-    // Reset zones
-    ['zone-top','zone-center','zone-left','zone-bottom','zone-right'].forEach(function(z) {
-      geoApp.setZoneState(z, 'neutral');
-    });
+    // Zones orthographiques
+    geoApp.clearFigureGroups();
     if (q.activeZones && q.activeZones.length > 0) {
-      q.activeZones.forEach(function(z) { geoApp.setZoneState(z, 'active'); });
-      geoApp.showZones();
+      geoApp.defineZones(q.activeZones, 8, 6, 0.5);
     } else {
       geoApp.hideZones();
+    }
+
+    // Figures déplaçables
+    if (q.figureGroups && q.figureGroups.length > 0) {
+      q.figureGroups.forEach(function(fg) {
+        // Find pivot point id from label
+        geoApp.defineFigureGroup(fg.id, fg.objectIds, fg.pivotLabel, fg.targetZoneId, fg.targetX, fg.targetY, fg.tolerance);
+      });
+      geoApp.onGroupMoved(function(groupId, zoneId, x, y) {
+        scheduleValidate();
+      });
     }
 
     // ── Objets DONNÉS : visibles, fixes, stylés ──────
@@ -1716,9 +1797,7 @@ function generateJS(data) {
     for (var k in questionScores) delete questionScores[k];
     loadQuestion(0);
     geoApp.updateScore('0', EXERCISE.maxScore != null ? EXERCISE.maxScore.toFixed(1) : '?');
-    ['zone-top','zone-center','zone-left','zone-bottom','zone-right'].forEach(function(z) {
-      geoApp.setZoneState(z, 'neutral');
-    });
+    geoApp.clearFigureGroups();
   };
 
   // ── Initial setup ─────────────────────────────────
