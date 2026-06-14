@@ -110,6 +110,18 @@ function signedAngle(cx, cy, ax, ay, bx, by) {
 function getObj(id) { return state.objects.find(o => o.id === id); }
 function getPoint(id) { const o = getObj(id); return o ? { x: o.x, y: o.y } : null; }
 
+// Returns the direction vector {dx, dy} of any line-like object (world coords)
+function getLineDirection(ref) {
+  if (!ref) return null;
+  if (ref.p1id && ref.p2id) {
+    const p1 = getPoint(ref.p1id), p2 = getPoint(ref.p2id);
+    if (p1 && p2) return { dx: p2.x - p1.x, dy: p2.y - p1.y };
+  }
+  // Derived line: direction already stored as dx/dy
+  if (ref.dx != null && (ref.dx !== 0 || ref.dy !== 0)) return { dx: ref.dx, dy: ref.dy };
+  return null;
+}
+
 function evalObject(obj) {
   // Compute derived positions / values
   if (!obj) return;
@@ -138,11 +150,8 @@ function evalObject(obj) {
       const ref = getObj(obj.refLineId);
       const pt = getPoint(obj.pointId);
       if (ref && pt) {
-        const rp1 = getPoint(ref.p1id), rp2 = getPoint(ref.p2id);
-        if (rp1 && rp2) {
-          obj.dx = rp2.x - rp1.x; obj.dy = rp2.y - rp1.y;
-          obj.px = pt.x; obj.py = pt.y;
-        }
+        const dir = getLineDirection(ref);
+        if (dir) { obj.dx = dir.dx; obj.dy = dir.dy; obj.px = pt.x; obj.py = pt.y; }
       }
       break;
     }
@@ -150,11 +159,8 @@ function evalObject(obj) {
       const ref = getObj(obj.refLineId);
       const pt = getPoint(obj.pointId);
       if (ref && pt) {
-        const rp1 = getPoint(ref.p1id), rp2 = getPoint(ref.p2id);
-        if (rp1 && rp2) {
-          obj.dx = -(rp2.y - rp1.y); obj.dy = rp2.x - rp1.x;
-          obj.px = pt.x; obj.py = pt.y;
-        }
+        const dir = getLineDirection(ref);
+        if (dir) { obj.dx = -dir.dy; obj.dy = dir.dx; obj.px = pt.x; obj.py = pt.y; }
       }
       break;
     }
@@ -939,7 +945,7 @@ const toolHandlers = {
   },
   'point-on-object'(wx, wy) {
     // Snap to nearest line/circle object
-    const obj = objectAtCanvas(...worldToCanvasPx(wx, wy));
+    const obj = objectAtCanvas(...worldToCanvasPx((state.rawClickWorld||{x:wx,y:wy}).x, (state.rawClickWorld||{x:wx,y:wy}).y));
     if (obj && (isLineLike(obj) || isCircleLike(obj))) {
       const snapped = snapToObjectPoint(obj, wx, wy);
       makePoint(snapped.x, snapped.y);
@@ -950,7 +956,7 @@ const toolHandlers = {
     render();
   },
   midpoint(wx, wy) {
-    const obj = objectAtCanvas(...worldToCanvasPx(wx, wy));
+    const obj = objectAtCanvas(...worldToCanvasPx((state.rawClickWorld||{x:wx,y:wy}).x, (state.rawClickWorld||{x:wx,y:wy}).y));
     if (!obj) { setStatus('Cliquez sur un segment ou deux points'); return; }
     if (obj.type === 'segment' || obj.type === 'vector') {
       const p1 = getPoint(obj.p1id), p2 = getPoint(obj.p2id);
@@ -967,7 +973,8 @@ const toolHandlers = {
     }
   },
   intersect(wx, wy) {
-    const obj = objectAtCanvas(...worldToCanvasPx(wx, wy));
+    const raw = state.rawClickWorld || { x: wx, y: wy };
+    const obj = objectAtCanvas(...worldToCanvasPx(raw.x, raw.y));
     if (!obj || (!isLineLike(obj) && !isCircleLike(obj))) { setStatus('Cliquez sur une droite ou un cercle'); return; }
     state.tempPoints.push({ ref: obj.id });
     if (state.tempPoints.length === 2) {
@@ -986,21 +993,20 @@ const toolHandlers = {
   vector: twoPointTool('vector'),
 
   parallel(wx, wy) {
-    const snapped = snapToGrid(wx, wy);
-    const obj = objectAtCanvas(...worldToCanvasPx(wx, wy));
+    const raw = state.rawClickWorld || { x: wx, y: wy };
+    const obj = objectAtCanvas(...worldToCanvasPx(raw.x, raw.y));
     if (!state.tempPoints.length) {
       if (obj && isLineLike(obj)) {
         state.tempPoints.push({ lineId: obj.id });
-        setStatus('Cliquez sur le point par lequel passe la parallèle (ou cliquez dans l\'espace vide)');
+        setStatus('Cliquez sur le point de passage (ou dans l\'espace vide pour en créer un)');
       } else if (obj && isPointLike(obj)) {
-        state.tempPoints.push({ pointId: obj.id, x: obj.x, y: obj.y });
+        state.tempPoints.push({ pointId: obj.id });
         setStatus('Cliquez sur la droite de référence');
-      } else { setStatus('Cliquez sur une droite ou un point'); }
+      } else { setStatus('Cliquez d\'abord sur une droite ou un segment'); }
     } else {
       const prev = state.tempPoints[0];
       if (prev.lineId) {
-        // Need a point — use existing or create new one
-        const pt = (obj && isPointLike(obj)) ? obj : makePoint(snapped.x, snapped.y);
+        const pt = (obj && isPointLike(obj)) ? obj : makePoint(wx, wy);
         const par = { id: uid(), type: 'parallel', label: nextLineLabel(), color: nextColor(), lineWidth: 2, visible: true, refLineId: prev.lineId, pointId: pt.id, px: 0, py: 0, dx: 1, dy: 0 };
         push(par); state.tempPoints = []; render();
       } else if (prev.pointId && obj && isLineLike(obj)) {
@@ -1011,22 +1017,21 @@ const toolHandlers = {
   },
 
   perpendicular(wx, wy) {
-    const snapped = snapToGrid(wx, wy);
-    const obj = objectAtCanvas(...worldToCanvasPx(wx, wy));
+    const raw = state.rawClickWorld || { x: wx, y: wy };
+    const obj = objectAtCanvas(...worldToCanvasPx(raw.x, raw.y));
     if (!state.tempPoints.length) {
       if (obj && isLineLike(obj)) {
         state.tempPoints.push({ lineId: obj.id });
-        setStatus('Cliquez sur le point par lequel passe la perpendiculaire (ou cliquez dans l\'espace vide)');
+        setStatus('Cliquez sur le point de passage (ou dans l\'espace vide pour en créer un)');
       } else if (obj && isPointLike(obj)) {
         state.tempPoints.push({ pointId: obj.id });
         setStatus('Cliquez sur la droite de référence');
-      } else setStatus('Cliquez sur une droite ou un point');
+      } else setStatus('Cliquez d\'abord sur une droite ou un point');
     } else {
       const prev = state.tempPoints[0];
       let refLineId, pointId;
       if (prev.lineId) {
-        // Need a point — use existing or create new one
-        const pt = (obj && isPointLike(obj)) ? obj : makePoint(snapped.x, snapped.y);
+        const pt = (obj && isPointLike(obj)) ? obj : makePoint(wx, wy);
         refLineId = prev.lineId; pointId = pt.id;
       } else if (prev.pointId && obj && isLineLike(obj)) {
         refLineId = obj.id; pointId = prev.pointId;
@@ -1130,7 +1135,7 @@ const toolHandlers = {
   },
 
   area(wx, wy) {
-    const obj = objectAtCanvas(...worldToCanvasPx(wx, wy));
+    const obj = objectAtCanvas(...worldToCanvasPx((state.rawClickWorld||{x:wx,y:wy}).x, (state.rawClickWorld||{x:wx,y:wy}).y));
     if (obj && obj.type === 'polygon') {
       push({ id: uid(), type: 'area-measure', label: nextMeasureLabel(), color: '#a6e3a1', lineWidth: 0, visible: true, polygonId: obj.id, value: 0 });
       render();
@@ -1138,7 +1143,7 @@ const toolHandlers = {
   },
 
   'reflect-line'(wx, wy) {
-    const obj = objectAtCanvas(...worldToCanvasPx(wx, wy));
+    const obj = objectAtCanvas(...worldToCanvasPx((state.rawClickWorld||{x:wx,y:wy}).x, (state.rawClickWorld||{x:wx,y:wy}).y));
     if (!state.tempPoints.length) {
       if (obj && isPointLike(obj)) {
         state.tempPoints.push({ pointId: obj.id });
@@ -1161,7 +1166,7 @@ const toolHandlers = {
   },
 
   'reflect-point'(wx, wy) {
-    const obj = objectAtCanvas(...worldToCanvasPx(wx, wy));
+    const obj = objectAtCanvas(...worldToCanvasPx((state.rawClickWorld||{x:wx,y:wy}).x, (state.rawClickWorld||{x:wx,y:wy}).y));
     if (!state.tempPoints.length) {
       if (obj && isPointLike(obj)) {
         state.tempPoints.push({ id: obj.id, x: obj.x, y: obj.y, isSrc: true });
@@ -1178,7 +1183,7 @@ const toolHandlers = {
   },
 
   rotate(wx, wy) {
-    const obj = objectAtCanvas(...worldToCanvasPx(wx, wy));
+    const obj = objectAtCanvas(...worldToCanvasPx((state.rawClickWorld||{x:wx,y:wy}).x, (state.rawClickWorld||{x:wx,y:wy}).y));
     if (!state.tempPoints.length) {
       if (obj && isPointLike(obj)) {
         state.tempPoints.push({ srcId: obj.id });
@@ -1199,7 +1204,7 @@ const toolHandlers = {
   },
 
   translate(wx, wy) {
-    const obj = objectAtCanvas(...worldToCanvasPx(wx, wy));
+    const obj = objectAtCanvas(...worldToCanvasPx((state.rawClickWorld||{x:wx,y:wy}).x, (state.rawClickWorld||{x:wx,y:wy}).y));
     if (!state.tempPoints.length) {
       if (obj && isPointLike(obj)) {
         state.tempPoints.push({ srcId: obj.id });
@@ -1224,12 +1229,12 @@ const toolHandlers = {
   },
 
   delete(wx, wy) {
-    const obj = objectAtCanvas(...worldToCanvasPx(wx, wy));
+    const obj = objectAtCanvas(...worldToCanvasPx((state.rawClickWorld||{x:wx,y:wy}).x, (state.rawClickWorld||{x:wx,y:wy}).y));
     if (obj) deleteObject(obj.id);
   },
 
   select(wx, wy) {
-    const obj = objectAtCanvas(...worldToCanvasPx(wx, wy));
+    const obj = objectAtCanvas(...worldToCanvasPx((state.rawClickWorld||{x:wx,y:wy}).x, (state.rawClickWorld||{x:wx,y:wy}).y));
     if (obj) {
       state.selected = [obj.id];
       showProperties(obj);
@@ -1378,6 +1383,7 @@ canvas.addEventListener('mousedown', e => {
   }
 
   const snapped = snapToGrid(world.x, world.y);
+  state.rawClickWorld = world; // raw coords for hit-testing in tools
   const handler = toolHandlers[state.tool];
   if (handler) handler(snapped.x, snapped.y);
 });
