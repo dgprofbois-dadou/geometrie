@@ -1616,15 +1616,28 @@ function generateJS(data) {
   const EXERCISE = ${dataJson};
 
   let currentQIdx = 0;
-  let score = 0;
+  const questionScores = {}; // score par question (remplacé à chaque validation)
 
-  // Track student-added objects for validation
+  function getTotalScore() {
+    return Object.values(questionScores).reduce(function(a, b) { return a + b; }, 0);
+  }
+
+  // Track student-added objects for live validation
   const studentObjects = {};
+  var _validateTimer = null;
+
+  function scheduleValidate() {
+    clearTimeout(_validateTimer);
+    _validateTimer = setTimeout(validateQuestion, 120);
+  }
+
   geoApp.registerAddListener(function(name) {
+    if (name.startsWith('__')) return; // ignore internal objects
     studentObjects[name] = true;
     geoApp.registerObjectUpdateListener(name, function() {
-      // coords updated live via getAllObjects()
+      scheduleValidate();
     });
+    scheduleValidate();
   });
 
   function dist2d(ax, ay, bx, by) {
@@ -1644,6 +1657,7 @@ function generateJS(data) {
     if (!q) return;
 
     clearStudentObjects();
+    questionScores[idx] = 0;
     geoApp.setQuestion(q.num, EXERCISE.totalQuestions);
     geoApp.setInstructions(q.instructions || EXERCISE.globalInstructions);
 
@@ -1737,8 +1751,9 @@ function generateJS(data) {
       }
     });
 
-    score += gained;
-    geoApp.updateScore(score.toFixed(1), EXERCISE.maxScore != null ? EXERCISE.maxScore.toFixed(1) : '?');
+    questionScores[currentQIdx] = gained;
+    var total = getTotalScore();
+    geoApp.updateScore(total.toFixed(1), EXERCISE.maxScore != null ? EXERCISE.maxScore.toFixed(1) : '?');
 
     const totalExpected = (q.expectedPoints||[]).length + (q.expectedSegments||[]).length;
     const allCorrect = totalExpected === 0 || gained >= totalExpected * ppc;
@@ -1766,7 +1781,7 @@ function generateJS(data) {
 
   geoVars['__onReset'] = function() {
     currentQIdx = 0;
-    score = 0;
+    for (var k in questionScores) delete questionScores[k];
     loadQuestion(0);
     geoApp.updateScore('0', EXERCISE.maxScore != null ? EXERCISE.maxScore.toFixed(1) : '?');
     ['zone-top','zone-center','zone-left','zone-bottom','zone-right'].forEach(function(z) {
