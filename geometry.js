@@ -294,7 +294,7 @@ function evalAll() {
 }
 
 // ── Hit testing ───────────────────────────────────
-const HIT_RADIUS_PX = 8;
+const HIT_RADIUS_PX = 10;
 
 function hitTestPoint(obj, cx, cy) {
   if (obj.type !== 'point' && obj.type !== 'midpoint' && obj.type !== 'reflect-line' &&
@@ -986,33 +986,37 @@ const toolHandlers = {
   vector: twoPointTool('vector'),
 
   parallel(wx, wy) {
+    const snapped = snapToGrid(wx, wy);
     const obj = objectAtCanvas(...worldToCanvasPx(wx, wy));
     if (!state.tempPoints.length) {
       if (obj && isLineLike(obj)) {
         state.tempPoints.push({ lineId: obj.id });
-        setStatus('Cliquez sur le point par lequel passe la parallèle');
+        setStatus('Cliquez sur le point par lequel passe la parallèle (ou cliquez dans l\'espace vide)');
       } else if (obj && isPointLike(obj)) {
         state.tempPoints.push({ pointId: obj.id, x: obj.x, y: obj.y });
         setStatus('Cliquez sur la droite de référence');
       } else { setStatus('Cliquez sur une droite ou un point'); }
     } else {
       const prev = state.tempPoints[0];
-      if (prev.lineId && obj && isPointLike(obj)) {
-        const par = { id: uid(), type: 'parallel', label: nextLineLabel(), color: nextColor(), lineWidth: 2, visible: true, refLineId: prev.lineId, pointId: obj.id, px: 0, py: 0, dx: 1, dy: 0 };
+      if (prev.lineId) {
+        // Need a point — use existing or create new one
+        const pt = (obj && isPointLike(obj)) ? obj : makePoint(snapped.x, snapped.y);
+        const par = { id: uid(), type: 'parallel', label: nextLineLabel(), color: nextColor(), lineWidth: 2, visible: true, refLineId: prev.lineId, pointId: pt.id, px: 0, py: 0, dx: 1, dy: 0 };
         push(par); state.tempPoints = []; render();
       } else if (prev.pointId && obj && isLineLike(obj)) {
         const par = { id: uid(), type: 'parallel', label: nextLineLabel(), color: nextColor(), lineWidth: 2, visible: true, refLineId: obj.id, pointId: prev.pointId, px: 0, py: 0, dx: 1, dy: 0 };
         push(par); state.tempPoints = []; render();
-      } else { setStatus('Sélection invalide'); state.tempPoints = []; }
+      } else { setStatus('Cliquez sur la droite de référence'); }
     }
   },
 
   perpendicular(wx, wy) {
+    const snapped = snapToGrid(wx, wy);
     const obj = objectAtCanvas(...worldToCanvasPx(wx, wy));
     if (!state.tempPoints.length) {
       if (obj && isLineLike(obj)) {
         state.tempPoints.push({ lineId: obj.id });
-        setStatus('Cliquez sur le point par lequel passe la perpendiculaire');
+        setStatus('Cliquez sur le point par lequel passe la perpendiculaire (ou cliquez dans l\'espace vide)');
       } else if (obj && isPointLike(obj)) {
         state.tempPoints.push({ pointId: obj.id });
         setStatus('Cliquez sur la droite de référence');
@@ -1020,12 +1024,17 @@ const toolHandlers = {
     } else {
       const prev = state.tempPoints[0];
       let refLineId, pointId;
-      if (prev.lineId && obj && isPointLike(obj)) { refLineId = prev.lineId; pointId = obj.id; }
-      else if (prev.pointId && obj && isLineLike(obj)) { refLineId = obj.id; pointId = prev.pointId; }
+      if (prev.lineId) {
+        // Need a point — use existing or create new one
+        const pt = (obj && isPointLike(obj)) ? obj : makePoint(snapped.x, snapped.y);
+        refLineId = prev.lineId; pointId = pt.id;
+      } else if (prev.pointId && obj && isLineLike(obj)) {
+        refLineId = obj.id; pointId = prev.pointId;
+      }
       if (refLineId && pointId) {
         const perp = { id: uid(), type: 'perpendicular', label: nextLineLabel(), color: nextColor(), lineWidth: 2, visible: true, refLineId, pointId, px: 0, py: 0, dx: 0, dy: 1 };
         push(perp); state.tempPoints = []; render();
-      } else { setStatus('Sélection invalide'); state.tempPoints = []; }
+      } else { setStatus('Cliquez sur la droite de référence'); }
     }
   },
 
