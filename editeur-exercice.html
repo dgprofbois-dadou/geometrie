@@ -521,7 +521,7 @@
   <span id="autosave-status" style="font-size:10px;color:var(--text-muted)">—</span>
   <button class="topbar-btn" id="btn-test" title="Tester dans l'application (nouvel onglet)">▶ Tester</button>
   <button class="topbar-btn" id="btn-preview-json" title="Aperçu JSON">{ } JSON</button>
-  <button class="topbar-btn primary" id="btn-export">⬇ Exporter .js</button>
+  <button class="topbar-btn primary" id="btn-editor-export">⬇ Exporter .js</button>
 </div>
 
 <!-- Workspace -->
@@ -779,6 +779,24 @@
     <button id="btn-zoom-in" style="display:none"></button>
     <button id="btn-zoom-out" style="display:none"></button>
     <button id="btn-zoom-fit" style="display:none"></button>
+    <button id="btn-clear" style="display:none"></button>
+    <button id="btn-export" style="display:none"></button>
+    <button id="toggle-algebra" style="display:none"></button>
+    <button id="prop-close" style="display:none"></button>
+    <div id="algebra-panel" style="display:none"><div id="algebra-list"></div></div>
+    <div id="properties-panel" class="hidden" style="display:none">
+      <button id="pname-ok" style="display:none"></button>
+      <input id="pcolor" style="display:none">
+      <input id="plw" style="display:none">
+      <input id="popacity" style="display:none">
+      <input id="psize" style="display:none">
+    </div>
+    <div id="input-dialog" class="hidden" style="display:none">
+      <span id="input-dialog-title"></span>
+      <input id="input-dialog-field">
+      <button id="input-dialog-ok"></button>
+      <button id="input-dialog-cancel"></button>
+    </div>
   </div>
 
   <!-- ── RIGHT: Questions ── -->
@@ -1696,7 +1714,7 @@ function generateJS(data) {
 `;
 }
 
-document.getElementById('btn-export').addEventListener('click', () => {
+document.getElementById('btn-editor-export').addEventListener('click', () => {
   if (exerciseData.questions.length === 0) {
     alert('Ajoutez au moins une question avant d\'exporter.');
     return;
