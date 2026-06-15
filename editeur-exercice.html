@@ -1205,7 +1205,15 @@ function selectQuestion(id) {
   // Update canvas label
   const q = currentQuestion();
   document.getElementById('canvas-q-label').textContent = q ? 'Q' + q.num : '';
-  if (q) loadGeoState(q);
+  if (q) {
+    loadGeoState(q);
+    // Show zones on canvas if active
+    if (q.activeZones && q.activeZones.size > 0) {
+      geoApp.defineZones([...q.activeZones], 8, 6, 0.5);
+    } else {
+      geoApp.hideZones();
+    }
+  }
 }
 
 function syncTotalQuestions() {
@@ -1325,6 +1333,9 @@ function renderQuestionEditor() {
     cb.addEventListener('change', function() {
       if (this.checked) q.activeZones.add(this.value);
       else q.activeZones.delete(this.value);
+      // Update canvas zones immediately
+      if (q.activeZones.size > 0) geoApp.defineZones([...q.activeZones], 8, 6, 0.5);
+      else geoApp.hideZones();
     });
   });
 
