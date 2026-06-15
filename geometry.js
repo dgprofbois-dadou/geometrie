@@ -37,6 +37,8 @@ const state = {
   zones: [],          // [{id, label, x1,y1,x2,y2, state:'neutral'|'active'|'yellow'|'green'}]
   // figure groups (drag-and-drop)
   figureGroups: [],   // [{id, label, objectIds, pivotId, targetZoneId, targetX, targetY}]
+  // edit groups (join/explode)
+  editingGroupId: null,
   isDraggingGroup: null,  // group id being dragged
   groupDragOffset: null,  // {dx, dy} world offset
   groupDragOrigPos: null, // {x,y} original pivot position
@@ -122,6 +124,12 @@ function signedAngle(cx, cy, ax, ay, bx, by) {
 
 function getObj(id) { return state.objects.find(o => o.id === id); }
 function getPoint(id) { const o = getObj(id); return o ? { x: o.x, y: o.y } : null; }
+function getEditGroup(id) { return state.objects.find(o => o.type === 'editgroup' && o.id === id) || null; }
+function getObjectGroupId(objId) { const o = getObj(objId); return o ? (o.groupId || null) : null; }
+function getGroupMembers(groupId) {
+  const g = getEditGroup(groupId);
+  return g ? g.memberIds.map(id => getObj(id)).filter(Boolean) : [];
+}
 
 // Returns the direction vector {dx, dy} of any line-like object (world coords)
 function getLineDirection(ref) {
@@ -683,6 +691,32 @@ function render() {
     }
   });
 
+  // Draw edit-group highlight
+  if (state.selected.length === 1) {
+    const selObj = getObj(state.selected[0]);
+    if (selObj && selObj.type === 'editgroup') {
+      getGroupMembers(selObj.id).forEach(m => {
+        if (!isPointLike(m)) return;
+        const c = worldToCanvas(m.x, m.y);
+        ctx.save();
+        ctx.strokeStyle = state.editingGroupId === selObj.id ? 'rgba(250,200,50,0.8)' : 'rgba(137,180,250,0.7)';
+        ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(c.x, c.y, 10, 0, Math.PI*2); ctx.stroke();
+        ctx.restore();
+      });
+      // Draw group bounding box
+      const pts = getGroupMembers(selObj.id).filter(isPointLike);
+      if (pts.length >= 2) {
+        const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+        const p1 = worldToCanvas(Math.min(...xs) - 0.5, Math.max(...ys) + 0.5);
+        const p2 = worldToCanvas(Math.max(...xs) + 0.5, Math.min(...ys) - 0.5);
+        ctx.save();
+        ctx.strokeStyle = state.editingGroupId === selObj.id ? 'rgba(250,200,50,0.4)' : 'rgba(137,180,250,0.35)';
+        ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]);
+        ctx.strokeRect(p1.x, p1.y, p2.x - p1.x, p2.y - p1.y);
+        ctx.restore();
+      }
+    }
+  }
   drawTempPreview();
   drawFigureGroupPivots();
 
@@ -1509,6 +1543,54 @@ function threePointToolAction(wx, wy, cb, statusMsgs) {
   render();
 }
 
+// ── Edit groups (join/explode) ─────────────────────
+function joinGroup() {
+  const sel = state.selected.filter(id => { const o = getObj(id); return o && o.type !== 'editgroup'; });
+  if (sel.length < 2) { setStatus('Sélectionnez au moins 2 objets à grouper'); return; }
+  saveUndo();
+  const grp = { id: uid(), type: 'editgroup', label: 'Grp' + (++state.labelCounters.line), memberIds: sel.slice() };
+  sel.forEach(id => { const o = getObj(id); if (o) o.groupId = grp.id; });
+  state.objects.push(grp);
+  state.selected = [grp.id];
+  setStatus('Groupe « ' + grp.label + ' » créé (' + sel.length + ' objets)');
+  render(); _fireAdd(grp.label);
+}
+
+function explodeGroup() {
+  let groupIds = state.selected.filter(id => { const o = getObj(id); return o && o.type === 'editgroup'; });
+  if (groupIds.length === 0) {
+    const gid = state.selected.map(id => getObjectGroupId(id)).find(Boolean);
+    if (gid) groupIds = [gid];
+  }
+  if (groupIds.length === 0) { setStatus('Sélectionnez un groupe à éclater'); return; }
+  saveUndo();
+  const freed = [];
+  groupIds.forEach(gid => {
+    const g = getEditGroup(gid);
+    if (!g) return;
+    g.memberIds.forEach(id => { const o = getObj(id); if (o) { delete o.groupId; freed.push(id); } });
+    state.objects = state.objects.filter(o => o.id !== gid);
+    if (state.editingGroupId === gid) state.editingGroupId = null;
+  });
+  state.selected = freed;
+  setStatus('Groupe éclaté — ' + freed.length + ' objets libérés');
+  render();
+}
+
+function enterGroupEdit(groupId) {
+  state.editingGroupId = groupId;
+  state.selected = [];
+  setStatus('Édition dans groupe — Échap pour quitter');
+  render();
+}
+function exitGroupEdit() {
+  if (!state.editingGroupId) return;
+  state.selected = [state.editingGroupId];
+  state.editingGroupId = null;
+  setStatus('');
+  render();
+}
+
 function finishPolygon() {
   if (state.tempPoints.length < 3) { setStatus('Un polygone nécessite au moins 3 points'); return; }
   push({ id: uid(), type: 'polygon', label: nextPolygonLabel(), color: nextColor(), lineWidth: 2, visible: true, pointIds: state.tempPoints.map(p => p.id) });
@@ -1548,6 +1630,12 @@ canvas.addEventListener('mousedown', e => {
     e.preventDefault(); return;
   }
 
+  // Shift+right-click: remove from selection
+  if (e.button === 2 && e.shiftKey) {
+    const obj = objectAtCanvas(pos.x, pos.y);
+    if (obj) { state.selected = state.selected.filter(id => id !== obj.id && id !== obj.groupId); render(); }
+    e.preventDefault(); return;
+  }
   if (e.button === 2) return;
 
   if (state.tool === 'select') {
@@ -1568,15 +1656,41 @@ canvas.addEventListener('mousedown', e => {
       render(); return;
     }
     const obj = objectAtCanvas(pos.x, pos.y);
-    if (obj && isPointLike(obj)) {
-      state.isDragging = true;
-      state.dragTarget = obj.id;
-      state.dragOffsetWorld = { x: obj.x - world.x, y: obj.y - world.y };
-      state.selected = [obj.id];
-      showProperties(obj);
-      render(); return;
-    }
     if (obj) {
+      // Ctrl+click: toggle in multi-selection
+      if (e.ctrlKey) {
+        const gid = obj.groupId;
+        const selId = gid && state.editingGroupId !== gid ? gid : obj.id;
+        if (state.selected.includes(selId)) state.selected = state.selected.filter(id => id !== selId);
+        else state.selected = [...state.selected, selId];
+        render(); return;
+      }
+      // Group edit mode: select individual member
+      if (obj.groupId && state.editingGroupId === obj.groupId) {
+        if (isPointLike(obj)) {
+          state.isDragging = true; state.dragTarget = obj.id;
+          state.dragOffsetWorld = { x: obj.x - world.x, y: obj.y - world.y };
+          state.selected = [obj.id]; showProperties(obj);
+        } else {
+          state.selected = [obj.id]; showProperties(obj);
+        }
+        render(); return;
+      }
+      // Object belongs to a group: select the group
+      if (obj.groupId && state.editingGroupId !== obj.groupId) {
+        state.selected = [obj.groupId];
+        const g = getEditGroup(obj.groupId);
+        if (g) { showProperties(g); }
+        render(); return;
+      }
+      if (isPointLike(obj)) {
+        state.isDragging = true;
+        state.dragTarget = obj.id;
+        state.dragOffsetWorld = { x: obj.x - world.x, y: obj.y - world.y };
+        state.selected = [obj.id];
+        showProperties(obj);
+        render(); return;
+      }
       state.selected = [obj.id];
       showProperties(obj);
       render(); return;
@@ -1659,8 +1773,17 @@ canvas.addEventListener('mousemove', e => {
     const obj = getObj(state.dragTarget);
     if (obj && obj.type === 'point') {
       const snapped = snapToGrid(world.x + state.dragOffsetWorld.x, world.y + state.dragOffsetWorld.y);
-      obj.x = snapped.x; obj.y = snapped.y;
-      updateAlgebra();
+      // If in a group and NOT in edit mode → move all group members together
+      if (obj.groupId && state.editingGroupId !== obj.groupId) {
+        const ddx = snapped.x - obj.x, ddy = snapped.y - obj.y;
+        obj.x = snapped.x; obj.y = snapped.y;
+        getGroupMembers(obj.groupId).forEach(m => {
+          if (m.id !== obj.id && isPointLike(m)) { m.x += ddx; m.y += ddy; }
+        });
+      } else {
+        obj.x = snapped.x; obj.y = snapped.y;
+      }
+      evalAll(); updateAlgebra();
       updatePropertiesLive(obj);
       render(); return;
     }
@@ -1775,9 +1898,15 @@ canvas.addEventListener('wheel', e => {
 
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 
-// Double-click to finish polygon
+// Double-click: finish polygon OR enter group edit
 canvas.addEventListener('dblclick', e => {
-  if (state.tool === 'polygon' && state.tempPoints.length >= 3) finishPolygon();
+  if (state.tool === 'polygon' && state.tempPoints.length >= 3) { finishPolygon(); return; }
+  if (state.tool === 'select') {
+    if (state.selected.length === 1) {
+      const obj = getObj(state.selected[0]);
+      if (obj && obj.type === 'editgroup') { enterGroupEdit(obj.id); return; }
+    }
+  }
 });
 
 // ── Keyboard shortcuts ────────────────────────────
@@ -1786,7 +1915,7 @@ document.addEventListener('keydown', e => {
   if (e.ctrlKey || e.metaKey) {
     if (e.key === 'z') { e.preventDefault(); undo(); }
     if (e.key === 'y' || (e.shiftKey && e.key === 'z')) { e.preventDefault(); redo(); }
-    if (e.key === 'g') { e.preventDefault(); toggleGrid(); }
+    if (e.key === 'g') { if (e.shiftKey) { e.preventDefault(); joinGroup(); } else { e.preventDefault(); toggleGrid(); } }
     if (e.key === 'a') { e.preventDefault(); toggleAxes(); }
     return;
   }
@@ -1801,9 +1930,18 @@ document.addEventListener('keydown', e => {
     case '+': case '=': zoom(1.2); break;
     case '-': zoom(1 / 1.2); break;
     case 'Delete': case 'Backspace':
-      if (state.selected.length) { state.selected.forEach(deleteObject); state.selected = []; }
+      if (state.selected.length) {
+        state.selected.forEach(id => {
+          const o = getObj(id);
+          if (o && o.type === 'editgroup') explodeGroup();
+          else deleteObject(id);
+        });
+        state.selected = [];
+      }
       break;
-    case 'Escape': state.tempPoints = []; state.selected = []; hideProperties(); setTool('select'); render(); break;
+    case 'Escape':
+      if (state.editingGroupId) { exitGroupEdit(); break; }
+      state.tempPoints = []; state.selected = []; hideProperties(); setTool('select'); render(); break;
   }
 });
 
@@ -1917,6 +2055,14 @@ state.snapUnit = 1;
   }
 })();
 
+// ── Group buttons ─────────────────────────────────
+(function() {
+  const btnJ = document.getElementById('btn-join-group');
+  if (btnJ) btnJ.addEventListener('click', joinGroup);
+  const btnE = document.getElementById('btn-explode-group');
+  if (btnE) btnE.addEventListener('click', explodeGroup);
+})();
+
 // ── Algebra panel ─────────────────────────────────
 document.getElementById('toggle-algebra').addEventListener('click', () => {
   document.getElementById('algebra-panel').classList.toggle('collapsed');
@@ -1993,7 +2139,7 @@ function showProperties(obj) {
   const typeNames = {
     point: 'Point', midpoint: 'Milieu', segment: 'Segment', line: 'Droite',
     ray: 'Demi-droite', vector: 'Vecteur', circle: 'Cercle', circle3pts: 'Cercle',
-    polygon: 'Polygone', rect: 'Rectangle', text: 'Texte', 'angle-measure': 'Angle',
+    polygon: 'Polygone', rect: 'Rectangle', editgroup: 'Groupe', text: 'Texte', 'angle-measure': 'Angle',
     'distance-measure': 'Distance', 'area-measure': 'Aire', parallel: 'Parallèle',
     perpendicular: 'Perpendiculaire', 'perp-bisector': 'Médiatrice',
     'angle-bisector': 'Bissectrice', semicircle: 'Demi-cercle', arc: 'Arc',
@@ -2011,6 +2157,16 @@ function showProperties(obj) {
     html += `<div class="prop-measure">${obj.value.toFixed(4)}</div>`;
   if (obj.type === 'area-measure' && obj.value != null)
     html += `<div class="prop-measure">${obj.value.toFixed(4)}</div>`;
+
+  // Group info
+  if (obj.type === 'editgroup') {
+    const members = getGroupMembers(obj.id);
+    html += `<div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">${members.length} objets membres</div>`;
+    html += `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+      <button id="p-enter-group" style="padding:3px 8px;background:#313244;border:1px solid #45475a;border-radius:4px;color:#cdd6f4;cursor:pointer;font-size:11px">✎ Éditer dans groupe</button>
+      <button id="p-explode-group" style="padding:3px 8px;background:#313244;border:1px solid #f38ba8;border-radius:4px;color:#f38ba8;cursor:pointer;font-size:11px">⚡ Éclater</button>
+    </div>`;
+  }
 
   // Coordinates
   if (isPointLike(obj))
@@ -2046,6 +2202,12 @@ function showProperties(obj) {
   html += `<div class="prop-row"><label>Nom</label><input type="text" id="plabel" value="${obj.label}"></div>`;
 
   content.innerHTML = html;
+
+  // Wire group buttons
+  const btnEG = content.querySelector('#p-enter-group');
+  if (btnEG) btnEG.addEventListener('click', () => enterGroupEdit(obj.id));
+  const btnEX = content.querySelector('#p-explode-group');
+  if (btnEX) btnEX.addEventListener('click', () => { explodeGroup(); hideProperties(); });
 
   // Wire up inputs
   const bind = (id, cb) => { const el = content.querySelector('#' + id); if (el) el.addEventListener('input', cb); };
@@ -2366,6 +2528,12 @@ const geoApp = {
     state.zones.forEach(z => { z.state = 'active'; });
     render();
   },
+
+  // ── Edit groups (join/explode) ────────────────────
+  joinSelection() { joinGroup(); },
+  explodeSelection() { explodeGroup(); },
+  enterGroupEdit(groupId) { enterGroupEdit(groupId); },
+  exitGroupEdit() { exitGroupEdit(); },
 
   // ── evalCommand ───────────────────────────────────
 
