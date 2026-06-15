@@ -1373,12 +1373,19 @@ function renderQuestionEditor() {
     });
     if (n === 0) { alert('Aucun objet positionnable sélectionné.'); return; }
     cx /= n; cy /= n;
-    // Create pivot point
+    // Create pivot point at centroid (= target position)
     const pivotLabel = '__fg_pivot_' + Date.now();
     const pivot = { id: uid(), type: 'point', label: pivotLabel, x: cx, y: cy, visible: false, fixed: false, color: '#89b4fa' };
     state.objects.push(pivot);
     if (!q.figureGroups) q.figureGroups = [];
-    q.figureGroups.push({ id: 'fg_' + Date.now(), label: name, objectIds: sel, pivotId: pivot.id, pivotLabel, targetZoneId, targetX: cx, targetY: cy, tolerance: q.tolerance || 1 });
+    // Compute start (palette) position: row above zones
+    const groupIndex = q.figureGroups.length;
+    const topY = 9.5 + 2.5; // above zone-top (which ends at ~9.5 with default layout)
+    const spacing = 5;
+    const startX = -(groupIndex * spacing / 2) + groupIndex * spacing;
+    const startY = topY;
+    const fgId = 'fg_' + Date.now();
+    q.figureGroups.push({ id: fgId, label: name, objectIds: sel, pivotId: pivot.id, pivotLabel, targetZoneId, targetX: cx, targetY: cy, tolerance: q.tolerance || 1, startX, startY });
     // Update geometry state
     saveCurrentGeoState();
     document.getElementById('figure-groups-list').innerHTML = buildFigureGroupsList(q);
@@ -1589,7 +1596,8 @@ function buildExerciseData() {
         pivotLabel: fg.pivotLabel,
         targetZoneId: fg.targetZoneId,
         targetX: fg.targetX, targetY: fg.targetY,
-        tolerance: fg.tolerance || q.tolerance || 1
+        tolerance: fg.tolerance || q.tolerance || 1,
+        startX: fg.startX, startY: fg.startY
       })),
       givenPoints, givenSegments, expectedPoints, expectedSegments
     };
@@ -1678,9 +1686,10 @@ function generateJS(data) {
     // Figures déplaçables
     if (q.figureGroups && q.figureGroups.length > 0) {
       q.figureGroups.forEach(function(fg) {
-        // Find pivot point id from label
-        geoApp.defineFigureGroup(fg.id, fg.objectIds, fg.pivotLabel, fg.targetZoneId, fg.targetX, fg.targetY, fg.tolerance);
+        geoApp.defineFigureGroup(fg.id, fg.label, fg.objectIds, fg.pivotLabel, fg.targetZoneId, fg.targetX, fg.targetY, fg.tolerance, fg.startX, fg.startY);
       });
+      // Move all figures to their start (palette) positions
+      geoApp.resetAllGroupsToStart();
       geoApp.onGroupMoved(function(groupId, zoneId, x, y) {
         scheduleValidate();
       });

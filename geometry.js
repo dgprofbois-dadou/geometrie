@@ -568,11 +568,31 @@ function drawZones() {
     ctx.fillText(z.label, cx, cy);
     ctx.restore();
   });
+
+  // Draw palette area label if there are figure groups
+  if (state.figureGroups.length > 0) {
+    const palette = getPaletteArea();
+    const p1 = worldToCanvas(palette.x1, palette.y2);
+    const p2 = worldToCanvas(palette.x2, palette.y1);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(180,180,255,0.3)';
+    ctx.fillStyle = 'rgba(100,100,200,0.06)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 4]);
+    ctx.fillRect(p1.x, p1.y, p2.x - p1.x, p2.y - p1.y);
+    ctx.strokeRect(p1.x, p1.y, p2.x - p1.x, p2.y - p1.y);
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(180,180,255,0.5)';
+    ctx.font = `bold ${Math.max(9, Math.min(13, state.scale * 0.2))}px sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('PIÈCES', (p1.x + p2.x) / 2, p1.y - 10);
+    ctx.restore();
+  }
 }
 
 function drawFigureGroupPivots() {
   state.figureGroups.forEach(fg => {
-    const pivot = state.objects.find(o => o.id === fg.pivotId);
+    const pivot = state.objects.find(o => o.id === fg.pivotId || o.label === fg.pivotLabel);
     if (!pivot || pivot.x == null) return;
     const c = worldToCanvas(pivot.x, pivot.y);
     ctx.save();
@@ -596,6 +616,21 @@ function drawFigureGroupPivots() {
 
 function getGroupZoneAt(x, y) {
   return state.zones.find(z => x >= z.x1 && x <= z.x2 && y >= z.y1 && y <= z.y2) || null;
+}
+
+function getPaletteArea() {
+  // Area above all zones where figures start
+  const topY = state.zones.reduce((m, z) => Math.max(m, z.y2), 6) + 1.5;
+  const totalW = state.figureGroups.length * 5;
+  return { x1: -totalW / 2, y1: topY, x2: totalW / 2, y2: topY + 5 };
+}
+
+function computeGroupStartPos(groupIndex) {
+  const topY = state.zones.reduce((m, z) => Math.max(m, z.y2), 6) + 2.5;
+  const spacing = 5;
+  const n = Math.max(1, state.figureGroups.length + 1);
+  const x = -(n - 1) * spacing / 2 + groupIndex * spacing;
+  return { x, y: topY };
 }
 
 function render() {
@@ -1476,13 +1511,14 @@ canvas.addEventListener('mousedown', e => {
   if (state.tool === 'select') {
     // Check if clicking a group pivot first
     const hitGroup = state.figureGroups.find(fg => {
-      const pivot = state.objects.find(o => o.id === fg.pivotId);
+      const pivot = state.objects.find(o => o.id === fg.pivotId || o.label === fg.pivotLabel);
       if (!pivot) return false;
+      fg.pivotId = pivot.id; // keep pivotId in sync
       const c = worldToCanvas(pivot.x, pivot.y);
       return Math.hypot(c.x - pos.x, c.y - pos.y) <= 14;
     });
     if (hitGroup) {
-      const pivot = state.objects.find(o => o.id === hitGroup.pivotId);
+      const pivot = state.objects.find(o => o.id === hitGroup.pivotId || o.label === hitGroup.pivotLabel);
       state.isDraggingGroup = hitGroup.id;
       state.groupDragOffset = { dx: pivot.x - world.x, dy: pivot.y - world.y };
       state.groupDragOrigPos = { x: pivot.x, y: pivot.y };
@@ -1553,7 +1589,7 @@ canvas.addEventListener('mousemove', e => {
   if (state.isDraggingGroup) {
     const fg = state.figureGroups.find(g => g.id === state.isDraggingGroup);
     if (fg) {
-      const pivot = state.objects.find(o => o.id === fg.pivotId);
+      const pivot = state.objects.find(o => o.id === fg.pivotId || o.label === fg.pivotLabel);
       if (pivot) {
         const newX = world.x + state.groupDragOffset.dx;
         const newY = world.y + state.groupDragOffset.dy;
@@ -1610,7 +1646,7 @@ canvas.addEventListener('mouseup', e => {
   if (state.isDraggingGroup) {
     const fg = state.figureGroups.find(g => g.id === state.isDraggingGroup);
     if (fg) {
-      const pivot = state.objects.find(o => o.id === fg.pivotId);
+      const pivot = state.objects.find(o => o.id === fg.pivotId || o.label === fg.pivotLabel);
       if (pivot) {
         const zone = getGroupZoneAt(pivot.x, pivot.y);
         const zoneId = zone ? zone.id : null;
@@ -2226,17 +2262,20 @@ const geoApp = {
     render();
   },
 
-  defineFigureGroup(groupId, objectIds, pivotLabel, targetZoneId, targetX, targetY, tolerance) {
+  defineFigureGroup(groupId, label, objectIds, pivotLabel, targetZoneId, targetX, targetY, tolerance, startX, startY) {
     const pivot = state.objects.find(o => o.label === pivotLabel || o.id === pivotLabel);
     // Remove existing group with same id
     state.figureGroups = state.figureGroups.filter(g => g.id !== groupId);
     state.figureGroups.push({
-      id: groupId, label: groupId,
+      id: groupId, label: label || groupId,
       objectIds: objectIds || [],
-      pivotId: pivot ? pivot.id : pivotLabel,
+      pivotId: pivot ? pivot.id : null,
+      pivotLabel,
       targetZoneId: targetZoneId || null,
       targetX: targetX || 0, targetY: targetY || 0,
-      tolerance: tolerance || 1
+      tolerance: tolerance || 1,
+      startX: startX != null ? startX : null,
+      startY: startY != null ? startY : null
     });
     render();
   },
@@ -2247,6 +2286,29 @@ const geoApp = {
 
   onGroupMoved(callback) {
     state.groupMovedCallback = callback;
+  },
+
+  resetGroupToStart(groupId) {
+    const fg = state.figureGroups.find(g => g.id === groupId);
+    if (!fg || fg.startX == null) return;
+    const pivot = state.objects.find(o => o.label === fg.pivotLabel || o.id === fg.pivotId);
+    if (!pivot) return;
+    const ddx = fg.startX - pivot.x, ddy = fg.startY - pivot.y;
+    pivot.x = fg.startX; pivot.y = fg.startY;
+    fg.objectIds.forEach(oid => {
+      const o = state.objects.find(ob => ob.id === oid);
+      if (!o || o.id === pivot.id) return;
+      if (o.x != null) { o.x += ddx; o.y += ddy; }
+      if (o.x1 != null) { o.x1 += ddx; o.y1 += ddy; o.x2 += ddx; o.y2 += ddy; }
+    });
+    render();
+  },
+
+  resetAllGroupsToStart() {
+    state.figureGroups.forEach(fg => this.resetGroupToStart(fg.id));
+    // Reset zone states
+    state.zones.forEach(z => { z.state = 'active'; });
+    render();
   },
 
   // ── evalCommand ───────────────────────────────────
