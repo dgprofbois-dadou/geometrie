@@ -409,9 +409,17 @@ function hitTestObject(obj, cx, cy) {
       if (!center || obj.r == null) return false;
       return hitTestCircle(center, obj.r, cx, cy);
     }
-    case 'polygon': {
-      // hit-test each edge
+    case 'polygon':
+    case 'rect': {
+      // hit-test edges OR filled interior (for rect with fillOpacity > 0)
       const pts = obj.pointIds.map(getPoint).filter(Boolean);
+      if (obj.type === 'rect' && (obj.fillOpacity || 0) > 0.01 && pts.length >= 4) {
+        // Check if inside rectangle
+        const world = canvasToWorld(cx, cy);
+        const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+        if (world.x >= Math.min(...xs) && world.x <= Math.max(...xs) &&
+            world.y >= Math.min(...ys) && world.y <= Math.max(...ys)) return true;
+      }
       for (let i = 0; i < pts.length; i++) {
         if (hitTestSegment(pts[i], pts[(i + 1) % pts.length], cx, cy)) return true;
       }
@@ -647,8 +655,10 @@ function render() {
   drawZones();
 
   // Draw objects (back to front)
-  // First: filled polygons
-  state.objects.forEach(o => { if (o.visible && o.type === 'polygon') drawPolygon(o, true); });
+  // First: filled shapes (sorted by zIndex)
+  const fillables = state.objects.filter(o => o.visible && (o.type === 'polygon' || o.type === 'rect'));
+  fillables.sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
+  fillables.forEach(o => { if (o.type === 'rect') drawRect(o, true); else drawPolygon(o, true); });
   // Then: all others
   state.objects.forEach(o => {
     if (!o.visible) return;
@@ -665,6 +675,7 @@ function render() {
       case 'semicircle': drawSemicircle(o); break;
       case 'arc': drawArc(o); break;
       case 'polygon': drawPolygon(o, false); break;
+      case 'rect': drawRect(o, false); break;
       case 'text': drawText(o); break;
       case 'angle-measure': drawAngleMeasure(o); break;
       case 'distance-measure': drawDistanceMeasure(o); break;
@@ -963,6 +974,24 @@ function drawArc(obj) {
   ctx.strokeStyle = objStroke(obj); ctx.lineWidth = obj.lineWidth || 2; ctx.stroke();
 }
 
+function drawRect(obj, fillOnly) {
+  const pts = obj.pointIds.map(getPoint).filter(Boolean);
+  if (pts.length < 4) return;
+  ctx.beginPath();
+  const c0 = worldToCanvas(pts[0].x, pts[0].y);
+  ctx.moveTo(c0.x, c0.y);
+  for (let i = 1; i < 4; i++) { const c = worldToCanvas(pts[i].x, pts[i].y); ctx.lineTo(c.x, c.y); }
+  ctx.closePath();
+  if (fillOnly) {
+    const alpha = obj.fillOpacity != null ? obj.fillOpacity : 0.15;
+    ctx.fillStyle = adjustAlpha(obj.fillColor || obj.color || '#7c9eff', alpha);
+    ctx.fill();
+  } else {
+    ctx.strokeStyle = objStroke(obj); ctx.lineWidth = isSelected(obj) ? 2.5 : (obj.lineWidth || 2);
+    ctx.stroke();
+  }
+}
+
 function drawPolygon(obj, fillOnly) {
   const pts = obj.pointIds.map(getPoint).filter(Boolean);
   if (pts.length < 2) return;
@@ -1064,6 +1093,17 @@ function drawTempPreview() {
     ctx.beginPath(); ctx.moveTo(cm.x, cm.y); ctx.lineTo(c2.x, c2.y);
     ctx.strokeStyle = 'rgba(255,220,100,0.3)';
     ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  if (state.tool === 'rectangle' && pts.length === 1 && state.mouseWorld) {
+    const a = pts[0], m = state.mouseWorld;
+    const corners = [worldToCanvas(a.x, a.y), worldToCanvas(m.x, a.y), worldToCanvas(m.x, m.y), worldToCanvas(a.x, m.y)];
+    ctx.beginPath();
+    ctx.moveTo(corners[0].x, corners[0].y);
+    corners.slice(1).forEach(c => ctx.lineTo(c.x, c.y));
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(124,158,255,0.10)'; ctx.fill();
+    ctx.strokeStyle = 'rgba(255,220,100,0.6)'; ctx.lineWidth = 1.5; ctx.setLineDash([5,3]); ctx.stroke(); ctx.setLineDash([]);
   }
 
   if ((state.tool === 'circle-center-point' || state.tool === 'semicircle') && pts.length === 1 && state.mouseWorld) {
@@ -1232,7 +1272,9 @@ const toolHandlers = {
     twoPointToolAction(wx, wy, (a, b) => {
       const c = makePoint(b.x, a.y);
       const d = makePoint(a.x, b.y);
-      push({ id: uid(), type: 'polygon', label: nextPolygonLabel(), color: nextColor(), lineWidth: 2, visible: true, pointIds: [a.id, c.id, b.id, d.id] });
+      push({ id: uid(), type: 'rect', label: nextPolygonLabel(), color: nextColor(), lineWidth: 2, visible: true,
+             fillColor: '#7c9eff', fillOpacity: 0.15, zIndex: 0,
+             pointIds: [a.id, c.id, b.id, d.id] });
     });
   },
 
@@ -1951,7 +1993,7 @@ function showProperties(obj) {
   const typeNames = {
     point: 'Point', midpoint: 'Milieu', segment: 'Segment', line: 'Droite',
     ray: 'Demi-droite', vector: 'Vecteur', circle: 'Cercle', circle3pts: 'Cercle',
-    polygon: 'Polygone', text: 'Texte', 'angle-measure': 'Angle',
+    polygon: 'Polygone', rect: 'Rectangle', text: 'Texte', 'angle-measure': 'Angle',
     'distance-measure': 'Distance', 'area-measure': 'Aire', parallel: 'Parallèle',
     perpendicular: 'Perpendiculaire', 'perp-bisector': 'Médiatrice',
     'angle-bisector': 'Bissectrice', semicircle: 'Demi-cercle', arc: 'Arc',
@@ -1989,6 +2031,12 @@ function showProperties(obj) {
 
   // Color
   html += `<div class="prop-row"><label>Couleur</label><input type="color" id="pcolor" value="${hexColor(obj.color || '#7c9eff')}"></div>`;
+  // Fill (rect only)
+  if (obj.type === 'rect') {
+    html += `<div class="prop-row"><label>Remplissage</label><input type="color" id="pfillcolor" value="${hexColor(obj.fillColor || obj.color || '#7c9eff')}"></div>`;
+    html += `<div class="prop-row"><label>Opacité</label><input type="range" id="pfillop" min="0" max="1" step="0.05" value="${obj.fillOpacity != null ? obj.fillOpacity : 0.15}" style="width:80px"><span id="pfillop-val">${Math.round((obj.fillOpacity != null ? obj.fillOpacity : 0.15)*100)}%</span></div>`;
+    html += `<div class="prop-row"><label>Z-index</label><input type="number" id="pzindex" min="-10" max="10" step="1" value="${obj.zIndex || 0}" style="width:55px"></div>`;
+  }
   // Line width
   if (obj.type !== 'point' && !isPointLike(obj))
     html += `<div class="prop-row"><label>Épaisseur</label><input type="range" id="plw" min="1" max="8" value="${obj.lineWidth || 2}"></div>`;
@@ -2007,6 +2055,14 @@ function showProperties(obj) {
   bind('ptxt', e => { if (obj.type === 'text') { obj.text = e.target.value; render(); }});
   bind('pang', e => { if (obj.type === 'rotate') { obj.angle = parseFloat(e.target.value) || 0; evalAll(); render(); updateAlgebra(); }});
   bind('pcolor', e => { obj.color = e.target.value; render(); updateAlgebra(); });
+  bind('pfillcolor', e => { obj.fillColor = e.target.value; render(); });
+  bind('pfillop', e => {
+    obj.fillOpacity = parseFloat(e.target.value);
+    const v = content.querySelector('#pfillop-val');
+    if (v) v.textContent = Math.round(obj.fillOpacity * 100) + '%';
+    render();
+  });
+  bind('pzindex', e => { obj.zIndex = parseInt(e.target.value) || 0; render(); });
   bind('plw', e => { obj.lineWidth = parseInt(e.target.value); render(); });
   bind('pvis', e => { obj.visible = e.target.checked; render(); updateAlgebra(); });
   bind('plabel', e => { obj.label = e.target.value; updateAlgebra(); });
