@@ -1584,6 +1584,13 @@ function syncRefObjPanel() {
 }
 
 // Sync panneau droite quand un objet est supprimé depuis le canvas
+geoApp.onPivotMoved(function(groupId, newX, newY) {
+  const q = currentQuestion();
+  if (!q) return;
+  const fg = (q.figureGroups || []).find(g => g.id === groupId);
+  if (fg) { fg.startX = newX; fg.startY = newY; scheduleSave(); }
+});
+
 geoApp.onObjectDeleted(function(deletedId) {
   const q = currentQuestion();
   if (q) {
@@ -1760,6 +1767,7 @@ function generateJS(data) {
     const q = EXERCISE.questions[idx];
     if (!q) return;
 
+    geoApp.setExerciseMode(true);
     questionScores[idx] = 0;
     for (const k in studentObjects) delete studentObjects[k];
     geoApp.setQuestion(q.num, EXERCISE.totalQuestions);

@@ -44,7 +44,8 @@ const state = {
   groupMovedCallback: null,
   // label counter
   labelCounters: { point: 0, line: 0, circle: 0, polygon: 0, text: 0, angle: 0, measure: 0 },
-  editingGroupId: null  // group currently being edited at detail level
+  editingGroupId: null,  // group currently being edited at detail level
+  exerciseMode: false    // true only during exercise playback (controls zone feedback)
 };
 
 let nextId = 1;
@@ -1846,21 +1847,22 @@ canvas.addEventListener('mousemove', e => {
     if (fg) {
       const pivot = state.objects.find(o => o.id === fg.pivotId || o.label === fg.pivotLabel);
       if (pivot) {
-        const newX = world.x + state.groupDragOffset.dx;
-        const newY = world.y + state.groupDragOffset.dy;
-        const ddx = newX - pivot.x, ddy = newY - pivot.y;
+        const snapped = snapToGrid(world.x + state.groupDragOffset.dx, world.y + state.groupDragOffset.dy);
+        const ddx = snapped.x - pivot.x, ddy = snapped.y - pivot.y;
         // Move pivot
-        pivot.x = newX; pivot.y = newY;
+        pivot.x = snapped.x; pivot.y = snapped.y;
         // Move all group objects (use moveObjectBy to handle rects/polygons via their defining points)
         const movedSet = new Set([pivot.id]);
         fg.objectIds.forEach(oid => {
           const o = state.objects.find(ob => ob.id === oid);
           if (o) moveObjectBy(o, ddx, ddy, movedSet);
         });
-        // Highlight zone under pivot
-        const zone = getGroupZoneAt(pivot.x, pivot.y);
-        state.zones.forEach(z => { if (z.state !== 'green') z.state = 'active'; });
-        if (zone && zone.state !== 'green') zone.state = 'yellow';
+        // Highlight zone under pivot (seulement en mode exercice)
+        if (state.exerciseMode) {
+          const zone = getGroupZoneAt(pivot.x, pivot.y);
+          state.zones.forEach(z => { if (z.state !== 'green') z.state = 'active'; });
+          if (zone && zone.state !== 'green') zone.state = 'yellow';
+        }
         render();
       }
     }
@@ -1921,7 +1923,19 @@ canvas.addEventListener('mousemove', e => {
 
 canvas.addEventListener('mouseup', e => {
   if (state.isPanning) { state.isPanning = false; canvas.style.cursor = (state.tool === 'select' || state.tool === 'lasso') ? 'default' : 'crosshair'; }
-  if (state.isDragging) { state.isDragging = false; state.dragTarget = null; state.dragLastWorld = null; canvas.style.cursor = 'default'; saveUndo(); render(); }
+  if (state.isDragging) {
+    // If the dragged point is a pivot, update figureGroup startX/startY
+    if (state.dragTarget) {
+      const draggedId = state.dragTarget.id;
+      const asFg = state.figureGroups.find(fg => fg.pivotId === draggedId || fg.pivotLabel === state.dragTarget.label);
+      if (asFg && !state.exerciseMode) {
+        asFg.startX = state.dragTarget.x;
+        asFg.startY = state.dragTarget.y;
+        if (state._onPivotMovedCb) state._onPivotMovedCb(asFg.id, state.dragTarget.x, state.dragTarget.y);
+      }
+    }
+    state.isDragging = false; state.dragTarget = null; state.dragLastWorld = null; canvas.style.cursor = 'default'; saveUndo(); render();
+  }
   if (state.isDraggingGroup) {
     const fg = state.figureGroups.find(g => g.id === state.isDraggingGroup);
     if (fg) {
@@ -1934,16 +1948,20 @@ canvas.addEventListener('mouseup', e => {
         const tol = fg.tolerance || 1;
         const inTarget = zoneId === fg.targetZoneId;
         const close = Math.hypot(dx, dy) <= tol;
-        if (inTarget && close) {
-          if (zone) zone.state = 'green';
-          // Snap to exact target: move all defining points
-          geoApp.resetGroupToStart(fg.id, fg.targetX, fg.targetY);
-        } else if (inTarget) {
-          if (zone) zone.state = 'yellow';
+        if (state.exerciseMode) {
+          if (inTarget && close) {
+            if (zone) zone.state = 'green';
+            geoApp.resetGroupToStart(fg.id, fg.targetX, fg.targetY);
+          } else if (inTarget) {
+            if (zone) zone.state = 'yellow';
+          } else {
+            state.zones.forEach(z => { if (z.state !== 'green') z.state = 'active'; });
+          }
+          if (state.groupMovedCallback) state.groupMovedCallback(fg.id, zoneId, pivot.x, pivot.y);
         } else {
-          state.zones.forEach(z => { if (z.state !== 'green') z.state = 'active'; });
+          // Éditeur : juste sauvegarder la nouvelle position du pivot
+          saveUndo();
         }
-        if (state.groupMovedCallback) state.groupMovedCallback(fg.id, zoneId, pivot.x, pivot.y);
         saveUndo();
       }
     }
@@ -2494,6 +2512,8 @@ const geoApp = {
 
   onObjectDeleted(cb) { state._onObjectDeletedCb = cb; },
 
+  setExerciseMode(on) { state.exerciseMode = !!on; },
+
   loadGeoState(objects) {
     state.objects = JSON.parse(JSON.stringify(objects || []));
     // Reset nextId to avoid collisions
@@ -2619,6 +2639,8 @@ const geoApp = {
   onGroupMoved(callback) {
     state.groupMovedCallback = callback;
   },
+
+  onPivotMoved(cb) { state._onPivotMovedCb = cb; },
 
   resetGroupToStart(groupId, targetX, targetY) {
     const fg = state.figureGroups.find(g => g.id === groupId);
