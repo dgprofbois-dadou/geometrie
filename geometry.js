@@ -1963,9 +1963,16 @@ canvas.addEventListener('mouseup', e => {
         const tol = fg.tolerance || 1;
         const inTarget = zoneId != null && fg.targetZoneId != null && zoneId === fg.targetZoneId;
         const close = Math.hypot(dx, dy) <= tol;
+        // Tolérance de position : si targetX/Y défini on exige proximité, sinon zone suffit
+        const hasTarget = fg.targetX != null && fg.targetY != null;
+        const close = !hasTarget || Math.hypot(dx, dy) <= tol;
         if (state.exerciseMode) {
-          if (inTarget) {
+          if (inTarget && close) {
             if (zone) zone.state = 'green';
+            if (state.groupMovedCallback) state.groupMovedCallback(fg.id, zoneId, pivot.x, pivot.y);
+          } else if (inTarget) {
+            // dans la bonne zone mais pas au bon endroit : orange
+            if (zone && zone.state !== 'green') zone.state = 'yellow';
             if (state.groupMovedCallback) state.groupMovedCallback(fg.id, zoneId, pivot.x, pivot.y);
           } else {
             state.zones.forEach(z => { if (z.state !== 'green') z.state = 'active'; });

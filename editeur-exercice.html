@@ -1220,7 +1220,7 @@ function addQuestion() {
     num: questionCounter,
     instructions: '',
     activeZones: new Set(['zone-center']),
-    tolerance: 0.5,
+    tolerance: 3,
     pointsPerCorrect: 1,
     geoState: [],
     roleMap: {},
@@ -1319,7 +1319,7 @@ function renderQuestionEditor() {
     <div class="form-row">
       <label>Tolérance de distance (unités)</label>
       <div class="tolerance-row">
-        <input type="number" id="q-tolerance" value="${q.tolerance}" min="0.05" max="5" step="0.05" style="width:80px">
+        <input type="number" id="q-tolerance" value="${q.tolerance}" min="0.05" max="20" step="0.5" style="width:80px">
         <span style="font-size:11px;color:var(--text-muted)">unités monde</span>
       </div>
     </div>
