@@ -1918,10 +1918,12 @@ function generateJS(data) {
     var total = getTotalScore();
     geoApp.updateScore(total.toFixed(1), EXERCISE.maxScore != null ? EXERCISE.maxScore.toFixed(1) : '?');
 
-    const totalExpected = (q.expectedPoints||[]).length + (q.expectedSegments||[]).length;
-    const allCorrect = totalExpected === 0 || gained >= totalExpected * ppc;
-
-    if (q.activeZones && q.activeZones.length > 0) {
+    // Ne pas écraser les états de zones gérés par le DnD (green/yellow)
+    // Colorier les zones uniquement si l'exercice n'a PAS de figureGroups
+    const hasDnD = q.figureGroups && q.figureGroups.length > 0;
+    if (!hasDnD && q.activeZones && q.activeZones.length > 0) {
+      const totalExpected = (q.expectedPoints||[]).length + (q.expectedSegments||[]).length;
+      const allCorrect = totalExpected === 0 || gained >= totalExpected * ppc;
       q.activeZones.forEach(function(z) {
         geoApp.setZoneState(z, allCorrect ? 'correct' : 'error');
       });
