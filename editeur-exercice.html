@@ -1832,14 +1832,17 @@ function generateJS(data) {
     const q = EXERCISE.questions[currentQIdx];
     if (!q) return 0;
 
+    // IDs des objets dans les figureGroups (validés par le système DnD, pas ici)
+    var fgObjIds = new Set((q.figureGroups || []).flatMap(function(fg) { return fg.objectIds || []; }));
+
     const all = geoApp.getAllObjects();
-    // Objets élève : ni fixés ni internes (__giv_, __ref_)
+    // Objets élève : ni fixés, ni internes, ni membres d'un figureGroup
     const studentPts = all.filter(function(o) {
       return (o.type === 'point' || o.type === 'midpoint')
-        && !o.fixed && !o.label.startsWith('__');
+        && !o.fixed && !o.label.startsWith('__') && !fgObjIds.has(o.id);
     });
     const studentSegs = all.filter(function(o) {
-      return o.type === 'segment' && !o.fixed && !o.label.startsWith('__');
+      return o.type === 'segment' && !o.fixed && !o.label.startsWith('__') && !fgObjIds.has(o.id);
     });
 
     const tol = q.tolerance || 0.5;
