@@ -1733,6 +1733,16 @@ canvas.addEventListener('mousedown', e => {
     });
     if (hitGroup) {
       const pivot = state.objects.find(o => o.id === hitGroup.pivotId || o.label === hitGroup.pivotLabel);
+      // Shift+clic sur pivot : déplace uniquement le pivot (reconfigure sa position)
+      if (e.shiftKey && pivot && !state.exerciseMode) {
+        state.selected = [pivot.id];
+        state.isDragging = true;
+        state.dragTarget = pivot;
+        state.dragOffsetWorld = { x: pivot.x - world.x, y: pivot.y - world.y };
+        state.dragLastWorld = { x: world.x, y: world.y };
+        canvas.style.cursor = 'grabbing';
+        render(); return;
+      }
       state.isDraggingGroup = hitGroup.id;
       state.groupDragOffset = { dx: pivot.x - world.x, dy: pivot.y - world.y };
       state.groupDragOrigPos = { x: pivot.x, y: pivot.y };
