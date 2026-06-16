@@ -1626,7 +1626,9 @@ function buildExerciseData() {
   saveCurrentGeoState(); // ensure current question is saved
 
   const questions = exerciseData.questions.map(q => {
-    const objs = (q.geoState || []).filter(o => !o.label.startsWith('__'));
+    // Inclure les pivots des figureGroups (labels __fg_pivot_*) même s'ils commencent par __
+    const fgPivotLabels = new Set((q.figureGroups || []).map(fg => fg.pivotLabel).filter(Boolean));
+    const objs = (q.geoState || []).filter(o => !o.label.startsWith('__') || fgPivotLabels.has(o.label));
     const roleMap = q.roleMap || {};
 
     const given    = objs.filter(o => roleMap[o.id] === 'given');
@@ -1756,16 +1758,38 @@ function generateJS(data) {
     if (q.geoState && q.geoState.length > 0) {
       var givenIdSet = new Set(q.givenIds || []);
       var fgObjIdSet = new Set(q.figureGroupObjIds || []);
-
-      // Étend fgObjIdSet aux points constitutifs des objets membres (p1id, p2id, pointIds…)
-      q.geoState.forEach(function(o) {
-        if (!fgObjIdSet.has(o.id)) return;
-        if (o.p1id) fgObjIdSet.add(o.p1id);
-        if (o.p2id) fgObjIdSet.add(o.p2id);
-        if (o.centerId) fgObjIdSet.add(o.centerId);
-        if (o.pointId) fgObjIdSet.add(o.pointId);
-        if (Array.isArray(o.pointIds)) o.pointIds.forEach(function(pid) { fgObjIdSet.add(pid); });
+      // Inclure les pivots (points __fg_pivot_*) dans le set DnD pour qu'ils soient visibles
+      if (q.figureGroups) q.figureGroups.forEach(function(fg) {
+        var pivot = q.geoState.find(function(o) { return o.label === fg.pivotLabel; });
+        if (pivot) fgObjIdSet.add(pivot.id);
       });
+
+      // Étend fgObjIdSet dans les deux sens :
+      // 1. Objets membres → leurs points constitutifs
+      // 2. Objets quelconques dont TOUS les points constitutifs sont dans le set → inclure l'objet
+      var changed = true;
+      while (changed) {
+        changed = false;
+        q.geoState.forEach(function(o) {
+          // Direction 1 : objet membre → ses points constitutifs
+          if (fgObjIdSet.has(o.id)) {
+            [o.p1id, o.p2id, o.centerId, o.pointId].forEach(function(pid) {
+              if (pid != null && !fgObjIdSet.has(pid)) { fgObjIdSet.add(pid); changed = true; }
+            });
+            if (Array.isArray(o.pointIds)) o.pointIds.forEach(function(pid) {
+              if (!fgObjIdSet.has(pid)) { fgObjIdSet.add(pid); changed = true; }
+            });
+          }
+          // Direction 2 : objet dont les constituants sont tous dans le set → inclure l'objet
+          if (!fgObjIdSet.has(o.id)) {
+            var refs = [o.p1id, o.p2id, o.centerId, o.pointId].filter(function(x) { return x != null; });
+            if (Array.isArray(o.pointIds)) refs = refs.concat(o.pointIds);
+            if (refs.length > 0 && refs.every(function(pid) { return fgObjIdSet.has(pid); })) {
+              fgObjIdSet.add(o.id); changed = true;
+            }
+          }
+        });
+      }
 
       // Clone : fixe les "donnés", masque les "à tracer" hors DnD
       var stateToLoad = q.geoState.map(function(o) {
