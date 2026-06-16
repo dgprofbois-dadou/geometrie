@@ -1263,6 +1263,12 @@ function selectQuestion(id) {
     } else {
       geoApp.hideZones();
     }
+    // Afficher les pivots ⊕ des figureGroups dans l'éditeur
+    geoApp.clearFigureGroups();
+    (q.figureGroups || []).forEach(fg => {
+      geoApp.defineFigureGroup(fg.id, fg.label, fg.objectIds, fg.pivotLabel,
+        fg.targetZoneId, fg.targetX, fg.targetY, fg.tolerance, fg.startX, fg.startY);
+    });
   }
 }
 
@@ -1438,11 +1444,12 @@ function renderQuestionEditor() {
     const startY = topY;
     const fgId = 'fg_' + Date.now();
     q.figureGroups.push({ id: fgId, label: name, objectIds: sel, pivotId: pivot.id, pivotLabel, targetZoneId, targetX: cx, targetY: cy, tolerance: q.tolerance || 1, startX, startY });
-    // Update geometry state
+    // Update geometry state + refresh figureGroups pivots on canvas
     saveCurrentGeoState();
     document.getElementById('figure-groups-list').innerHTML = buildFigureGroupsList(q);
     wireFigureGroupDelBtns(q);
     geoApp.defineZones(activeZoneIds, 8, 6, 0.5);
+    geoApp.defineFigureGroup(fgId, name, sel, pivotLabel, targetZoneId, cx, cy, q.tolerance || 1, startX, startY);
     render();
   });
 
@@ -1460,6 +1467,10 @@ function wireFigureGroupDelBtns(q) {
       document.getElementById('figure-groups-list').innerHTML = buildFigureGroupsList(q);
       wireFigureGroupDelBtns(q);
       saveCurrentGeoState();
+      // Resync pivots visibles sur le canvas
+      geoApp.clearFigureGroups();
+      (q.figureGroups || []).forEach(fg => geoApp.defineFigureGroup(fg.id, fg.label, fg.objectIds, fg.pivotLabel, fg.targetZoneId, fg.targetX, fg.targetY, fg.tolerance, fg.startX, fg.startY));
+      render();
     });
   });
 }
