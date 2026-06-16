@@ -261,6 +261,24 @@
       flex-direction: column;
     }
 
+    .collapsible-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 12px;
+      cursor: pointer;
+      user-select: none;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface2);
+      flex-shrink: 0;
+    }
+    .collapsible-header:hover { background: var(--highlight); }
+    .collapsible-header h3 { margin: 0; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+    .collapsible-toggle { font-size: 11px; color: var(--text-muted); transition: transform .2s; }
+    .collapsible-toggle.open { transform: rotate(180deg); }
+    .collapsible-body { overflow: hidden; transition: max-height .2s ease; }
+    .collapsible-body.collapsed { max-height: 0 !important; }
+
     #right-panel > .panel-section:first-child { flex-shrink: 0; }
 
     #questions-header {
@@ -841,18 +859,30 @@
     <div id="questions-list"></div>
 
     <!-- Palette de l'élève -->
-    <div class="panel-section" id="student-tools-section">
-      <h3>Palette de l'élève</h3>
-      <div style="font-size:10px;color:var(--text-muted);margin-bottom:8px">Outils disponibles lors de l'exercice :</div>
-      <div id="student-tools-grid" style="display:flex;flex-wrap:wrap;gap:4px"></div>
+    <div id="student-tools-section">
+      <div class="collapsible-header" id="toggle-palette">
+        <h3>Palette de l'élève</h3>
+        <span class="collapsible-toggle open">▲</span>
+      </div>
+      <div class="collapsible-body" id="palette-body" style="max-height:400px">
+        <div class="panel-section" style="border:none">
+          <div style="font-size:10px;color:var(--text-muted);margin-bottom:8px">Outils disponibles lors de l'exercice :</div>
+          <div id="student-tools-grid" style="display:flex;flex-wrap:wrap;gap:4px"></div>
+        </div>
+      </div>
     </div>
 
     <!-- Panneau propriétés objet sélectionné -->
     <div id="obj-props-panel" style="display:none">
-      <div id="obj-props-header">
-        <span id="obj-props-title">Propriétés</span>
-        <button id="obj-props-close" title="Fermer">✕</button>
+      <div class="collapsible-header" id="toggle-props" style="background:var(--surface)">
+        <span id="obj-props-title" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--accent2)">Propriétés</span>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span class="collapsible-toggle open" id="props-chevron">▲</span>
+          <button id="obj-props-close" title="Fermer" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:13px">✕</button>
+        </div>
       </div>
+      <div class="collapsible-body" id="props-body" style="max-height:400px">
+      <div id="obj-props-body-wrap">
       <div id="obj-props-body">
         <div class="form-row">
           <label>Nom</label>
@@ -900,8 +930,9 @@
             <input type="number" id="op-gap-len" min="2" max="40" step="1" style="width:60px">
           </div>
         </div>
-      </div>
-    </div>
+      </div><!-- end obj-props-body-wrap -->
+      </div><!-- end props-body (collapsible) -->
+    </div><!-- end obj-props-panel -->
 
     <div id="question-editor">
       <div class="no-q">Sélectionnez ou créez une question.</div>
@@ -2051,6 +2082,24 @@ document.getElementById('btn-test').addEventListener('click', () => {
     alert('Impossible d\'ouvrir le test : ' + e.message);
   }
 });
+
+// ── Collapsible sections ──────────────────────────
+(function() {
+  function makeCollapsible(toggleId, bodyId, chevronEl) {
+    const btn = document.getElementById(toggleId);
+    const body = document.getElementById(bodyId);
+    const chevron = chevronEl || btn.querySelector('.collapsible-toggle');
+    if (!btn || !body) return;
+    btn.addEventListener('click', function(e) {
+      if (e.target.id === 'obj-props-close') return; // don't collapse on close btn
+      const isOpen = !body.classList.contains('collapsed');
+      body.classList.toggle('collapsed', isOpen);
+      if (chevron) chevron.classList.toggle('open', !isOpen);
+    });
+  }
+  makeCollapsible('toggle-palette', 'palette-body');
+  makeCollapsible('toggle-props', 'props-body', document.getElementById('props-chevron'));
+})();
 
 // ── Wire obj-props-panel inputs ───────────────────
 document.getElementById('obj-props-close').addEventListener('click', () => {
