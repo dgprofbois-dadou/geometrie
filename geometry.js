@@ -28,6 +28,7 @@ const state = {
   isDragging: false,
   dragTarget: null,
   dragOffsetWorld: null,
+  dragLastWorld: null,  // for non-point drag (delta-based)
   // lasso
   isLasso: false,
   lassoStart: null,
@@ -450,11 +451,51 @@ function getObjectGroupId(objId) {
   return obj ? obj.groupId || null : null;
 }
 function getGroup(groupId) {
-  return state.objects.find(o => o.type === 'group' && o.id === groupId) || null;
+  return state.objects.find(o => (o.type === 'group' || o.type === 'editgroup') && o.id === groupId) || null;
 }
 function getGroupMembers(groupId) {
   const g = getGroup(groupId);
   return g ? g.memberIds.map(id => getObj(id)).filter(Boolean) : [];
+}
+
+function getDefiningPointIds(obj) {
+  switch (obj.type) {
+    case 'segment': case 'vector': case 'line': case 'ray':
+    case 'perp-bisector':
+      return [obj.p1id, obj.p2id].filter(Boolean);
+    case 'angle-bisector':
+      return [obj.p1id, obj.p2id, obj.p3id].filter(Boolean);
+    case 'parallel': case 'perpendicular':
+      return [obj.pointId].filter(Boolean);
+    case 'circle':
+      return [obj.centerId, obj.radiusPointId].filter(Boolean);
+    case 'circle3pts':
+      return [obj.p1id, obj.p2id, obj.p3id].filter(Boolean);
+    case 'semicircle':
+      return [obj.p1id, obj.p2id].filter(Boolean);
+    case 'arc':
+      return [obj.p1id, obj.p2id, obj.p3id].filter(Boolean);
+    case 'polygon': case 'rect':
+      return obj.pointIds ? [...obj.pointIds] : [];
+    case 'angle-measure': case 'distance-measure':
+      return [obj.p1id, obj.p2id, obj.p3id].filter(Boolean);
+    default:
+      return [];
+  }
+}
+
+function moveObjectBy(obj, ddx, ddy, movedSet) {
+  if (!movedSet) movedSet = new Set();
+  if (obj.type === 'point') {
+    if (!obj.fixed && !movedSet.has(obj.id)) { movedSet.add(obj.id); obj.x += ddx; obj.y += ddy; }
+    return;
+  }
+  if (obj.type === 'text') { obj.x += ddx; obj.y += ddy; return; }
+  getDefiningPointIds(obj).forEach(id => {
+    if (movedSet.has(id)) return; movedSet.add(id);
+    const pt = getObj(id);
+    if (pt && pt.type === 'point' && !pt.fixed) { pt.x += ddx; pt.y += ddy; }
+  });
 }
 
 function isLineLike(obj) {
@@ -1721,6 +1762,17 @@ canvas.addEventListener('mousedown', e => {
         }
         render(); return;
       }
+      // Start dragging non-point object (moves all its defining points)
+      const ptIds = getDefiningPointIds(obj);
+      if (ptIds.length > 0 || obj.type === 'text') {
+        state.isDragging = true;
+        state.dragTarget = obj.id;
+        state.dragLastWorld = { x: world.x, y: world.y };
+        state.selected = [obj.id];
+        showProperties(obj);
+        canvas.style.cursor = 'grabbing';
+        render(); return;
+      }
       state.selected = [obj.id];
       showProperties(obj);
       render(); return;
@@ -1801,7 +1853,7 @@ canvas.addEventListener('mousemove', e => {
 
   if (state.isDragging && state.dragTarget) {
     const obj = getObj(state.dragTarget);
-    if (obj && obj.type === 'point') {
+    if (obj && isPointLike(obj)) {
       const newPos = snapToGrid(world.x + state.dragOffsetWorld.x, world.y + state.dragOffsetWorld.y);
       const ddx = newPos.x - obj.x;
       const ddy = newPos.y - obj.y;
@@ -1809,13 +1861,26 @@ canvas.addEventListener('mousemove', e => {
       // Move group members if in a group and not editing that group
       if (obj.groupId && state.editingGroupId !== obj.groupId) {
         getGroupMembers(obj.groupId).forEach(m => {
-          if (m.id !== obj.id && isPointLike(m)) {
-            m.x += ddx; m.y += ddy;
-          }
+          if (m.id !== obj.id && isPointLike(m)) { m.x += ddx; m.y += ddy; }
         });
       }
-      updateAlgebra();
+      evalAll(); updateAlgebra();
       updatePropertiesLive(obj);
+      render(); return;
+    }
+    // Drag non-point object (segment, circle, polygon, etc.) — move all defining points
+    if (obj && state.dragLastWorld) {
+      const ddx = world.x - state.dragLastWorld.x;
+      const ddy = world.y - state.dragLastWorld.y;
+      state.dragLastWorld = { x: world.x, y: world.y };
+      // If in a group, move all group members
+      if (obj.groupId && state.editingGroupId !== obj.groupId) {
+        const movedSet = new Set();
+        getGroupMembers(obj.groupId).forEach(m => moveObjectBy(m, ddx, ddy, movedSet));
+      } else {
+        moveObjectBy(obj, ddx, ddy);
+      }
+      evalAll(); updateAlgebra();
       render(); return;
     }
   }
@@ -1838,7 +1903,7 @@ canvas.addEventListener('mousemove', e => {
 
 canvas.addEventListener('mouseup', e => {
   if (state.isPanning) { state.isPanning = false; canvas.style.cursor = (state.tool === 'select' || state.tool === 'lasso') ? 'default' : 'crosshair'; }
-  if (state.isDragging) { state.isDragging = false; state.dragTarget = null; saveUndo(); }
+  if (state.isDragging) { state.isDragging = false; state.dragTarget = null; state.dragLastWorld = null; canvas.style.cursor = 'default'; saveUndo(); }
   if (state.isDraggingGroup) {
     const fg = state.figureGroups.find(g => g.id === state.isDraggingGroup);
     if (fg) {
