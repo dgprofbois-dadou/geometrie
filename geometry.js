@@ -1851,12 +1851,11 @@ canvas.addEventListener('mousemove', e => {
         const ddx = newX - pivot.x, ddy = newY - pivot.y;
         // Move pivot
         pivot.x = newX; pivot.y = newY;
-        // Move all group objects
+        // Move all group objects (use moveObjectBy to handle rects/polygons via their defining points)
+        const movedSet = new Set([pivot.id]);
         fg.objectIds.forEach(oid => {
           const o = state.objects.find(ob => ob.id === oid);
-          if (!o) return;
-          if (o.x != null) { o.x += ddx; o.y += ddy; }
-          if (o.x1 != null) { o.x1 += ddx; o.y1 += ddy; o.x2 += ddx; o.y2 += ddy; }
+          if (o) moveObjectBy(o, ddx, ddy, movedSet);
         });
         // Highlight zone under pivot
         const zone = getGroupZoneAt(pivot.x, pivot.y);

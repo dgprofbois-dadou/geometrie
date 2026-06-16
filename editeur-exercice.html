@@ -1791,15 +1791,27 @@ function generateJS(data) {
         });
       }
 
-      // Clone : fixe les "donnés", masque les "à tracer" hors DnD
+      // Set des pivots (drag handles visibles)
+      var pivotIds = new Set();
+      if (q.figureGroups) q.figureGroups.forEach(function(fg) {
+        var pivot = q.geoState.find(function(o) { return o.label === fg.pivotLabel; });
+        if (pivot) pivotIds.add(pivot.id);
+      });
+
+      // Clone : fixe les "donnés", masque les "à tracer" hors DnD,
+      // fixe les membres DnD (sauf pivots) pour qu'ils ne soient déplaçables
+      // qu'ensemble via le pivot ⊕
       var stateToLoad = q.geoState.map(function(o) {
         var clone = JSON.parse(JSON.stringify(o));
         if (givenIdSet.has(o.id)) {
           clone.fixed = true;
-        } else if (!fgObjIdSet.has(o.id)) {
-          clone.visible = false;
+        } else if (pivotIds.has(o.id)) {
+          clone.fixed = false;  // pivot : déplaçable (drag handle)
+          clone.visible = false; // invisible mais actif
+        } else if (fgObjIdSet.has(o.id)) {
+          clone.fixed = true;   // membres DnD : fixés, ne bougent que via le pivot
         } else {
-          clone.fixed = false; // objets DnD : non fixés, déplaçables
+          clone.visible = false; // "à tracer" hors DnD : caché
         }
         return clone;
       });
