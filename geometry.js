@@ -2628,24 +2628,64 @@ const geoApp = {
     state.groupMovedCallback = callback;
   },
 
-  resetGroupToStart(groupId) {
+  resetGroupToStart(groupId, targetX, targetY) {
     const fg = state.figureGroups.find(g => g.id === groupId);
-    if (!fg || fg.startX == null) return;
+    if (!fg) return;
     const pivot = state.objects.find(o => o.label === fg.pivotLabel || o.id === fg.pivotId);
     if (!pivot) return;
-    const ddx = fg.startX - pivot.x, ddy = fg.startY - pivot.y;
-    pivot.x = fg.startX; pivot.y = fg.startY;
+    const tx = targetX != null ? targetX : fg.startX;
+    const ty = targetY != null ? targetY : fg.startY;
+    if (tx == null) return;
+    const ddx = tx - pivot.x, ddy = ty - pivot.y;
+    // Move pivot and all defining points of member objects
+    const movedPtIds = new Set();
     fg.objectIds.forEach(oid => {
       const o = state.objects.find(ob => ob.id === oid);
-      if (!o || o.id === pivot.id) return;
-      if (o.x != null) { o.x += ddx; o.y += ddy; }
-      if (o.x1 != null) { o.x1 += ddx; o.y1 += ddy; o.x2 += ddx; o.y2 += ddy; }
+      if (!o) return;
+      const ptIds = getDefiningPointIds(o);
+      if (ptIds.length > 0) {
+        ptIds.forEach(pid => {
+          if (movedPtIds.has(pid)) return;
+          movedPtIds.add(pid);
+          const pt = state.objects.find(ob => ob.id === pid);
+          if (pt) { pt.x += ddx; pt.y += ddy; }
+        });
+      } else if (isPointLike(o)) {
+        if (!movedPtIds.has(o.id)) {
+          movedPtIds.add(o.id);
+          o.x += ddx; o.y += ddy;
+        }
+      }
     });
+    // Also move pivot itself if not already moved
+    if (!movedPtIds.has(pivot.id)) { pivot.x += ddx; pivot.y += ddy; }
+    fg.currentZoneId = null;
     render();
   },
 
   resetAllGroupsToStart() {
-    state.figureGroups.forEach(fg => this.resetGroupToStart(fg.id));
+    const n = state.figureGroups.length;
+    if (n === 0) { render(); return; }
+
+    // Palette area: above the topmost zone
+    const topZoneY2 = state.zones.reduce((m, z) => Math.max(m, z.y2), 5);
+    const paletteY = topZoneY2 + 3;          // vertical center of palette row
+    const totalW = state.zones.reduce((m, z) => Math.max(m, z.x2) - Math.min(0, z.x1), 20);
+    const slotW  = Math.max(4, totalW / (n + 1));
+
+    // Shuffle groups for random order
+    const indices = Array.from({ length: n }, (_, i) => i).sort(() => Math.random() - 0.5);
+    const leftX = -(n - 1) * slotW / 2;
+
+    state.figureGroups.forEach((fg, i) => {
+      const slot = indices[i];
+      // Slight random jitter within slot (±30% of slotW)
+      const jitter = (Math.random() - 0.5) * slotW * 0.4;
+      const tx = leftX + slot * slotW + jitter;
+      const ty = paletteY + (Math.random() - 0.5) * 1.5;
+      this.resetGroupToStart(fg.id, tx, ty);
+    });
+
     // Reset zone states
     state.zones.forEach(z => { z.state = 'active'; });
     render();

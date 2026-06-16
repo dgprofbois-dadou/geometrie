@@ -1714,13 +1714,26 @@ function generateJS(data) {
     if (q.geoState && q.geoState.length > 0) {
       var givenIdSet = new Set(q.givenIds || []);
       var fgObjIdSet = new Set(q.figureGroupObjIds || []);
-      // Clone et fixe les objets "donnés", masque les objets "à tracer" hors figureGroup
+
+      // Étend fgObjIdSet aux points constitutifs des objets membres (p1id, p2id, pointIds…)
+      q.geoState.forEach(function(o) {
+        if (!fgObjIdSet.has(o.id)) return;
+        if (o.p1id) fgObjIdSet.add(o.p1id);
+        if (o.p2id) fgObjIdSet.add(o.p2id);
+        if (o.centerId) fgObjIdSet.add(o.centerId);
+        if (o.pointId) fgObjIdSet.add(o.pointId);
+        if (Array.isArray(o.pointIds)) o.pointIds.forEach(function(pid) { fgObjIdSet.add(pid); });
+      });
+
+      // Clone : fixe les "donnés", masque les "à tracer" hors DnD
       var stateToLoad = q.geoState.map(function(o) {
         var clone = JSON.parse(JSON.stringify(o));
         if (givenIdSet.has(o.id)) {
-          clone.fixed = true; // donné = fixe, non déplaçable par l'élève
+          clone.fixed = true;
         } else if (!fgObjIdSet.has(o.id)) {
-          clone.visible = false; // "à tracer" hors DnD = caché (l'élève doit le tracer)
+          clone.visible = false;
+        } else {
+          clone.fixed = false; // objets DnD : non fixés, déplaçables
         }
         return clone;
       });
