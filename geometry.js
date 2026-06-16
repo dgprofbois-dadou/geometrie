@@ -496,17 +496,17 @@ function getDefiningPointIds(obj) {
   }
 }
 
-function moveObjectBy(obj, ddx, ddy, movedSet) {
+function moveObjectBy(obj, ddx, ddy, movedSet, ignoreFixed = false) {
   if (!movedSet) movedSet = new Set();
   if (obj.type === 'point') {
-    if (!obj.fixed && !movedSet.has(obj.id)) { movedSet.add(obj.id); obj.x += ddx; obj.y += ddy; }
+    if ((ignoreFixed || !obj.fixed) && !movedSet.has(obj.id)) { movedSet.add(obj.id); obj.x += ddx; obj.y += ddy; }
     return;
   }
   if (obj.type === 'text') { obj.x += ddx; obj.y += ddy; return; }
   getDefiningPointIds(obj).forEach(id => {
     if (movedSet.has(id)) return; movedSet.add(id);
     const pt = getObj(id);
-    if (pt && pt.type === 'point' && !pt.fixed) { pt.x += ddx; pt.y += ddy; }
+    if (pt && pt.type === 'point' && (ignoreFixed || !pt.fixed)) { pt.x += ddx; pt.y += ddy; }
   });
 }
 
@@ -1865,7 +1865,7 @@ canvas.addEventListener('mousemove', e => {
         const movedSet = new Set([pivot.id]);
         fg.objectIds.forEach(oid => {
           const o = state.objects.find(ob => ob.id === oid);
-          if (o) moveObjectBy(o, ddx, ddy, movedSet);
+          if (o) moveObjectBy(o, ddx, ddy, movedSet, true);
         });
         // Highlight zone under pivot (seulement en mode exercice)
         if (state.exerciseMode) {
