@@ -1959,15 +1959,13 @@ canvas.addEventListener('mouseup', e => {
         const inTarget = zoneId === fg.targetZoneId;
         const close = Math.hypot(dx, dy) <= tol;
         if (state.exerciseMode) {
-          if (inTarget && close) {
+          if (inTarget) {
             if (zone) zone.state = 'green';
-            geoApp.resetGroupToStart(fg.id, fg.targetX, fg.targetY);
-          } else if (inTarget) {
-            if (zone) zone.state = 'yellow';
+            if (state.groupMovedCallback) state.groupMovedCallback(fg.id, zoneId, pivot.x, pivot.y);
           } else {
             state.zones.forEach(z => { if (z.state !== 'green') z.state = 'active'; });
+            if (state.groupMovedCallback) state.groupMovedCallback(fg.id, zoneId, pivot.x, pivot.y);
           }
-          if (state.groupMovedCallback) state.groupMovedCallback(fg.id, zoneId, pivot.x, pivot.y);
         } else {
           // Éditeur : juste sauvegarder la nouvelle position du pivot
           saveUndo();
