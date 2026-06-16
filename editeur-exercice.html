@@ -1295,9 +1295,7 @@ function renderQuestionEditor() {
       <button class="role-btn ${_currentRole==='given'?'role-active':''}"    id="toggle-role-given">Donné</button>
       <button class="role-btn ${_currentRole==='expected'?'role-active':''}" id="toggle-role-expected">À tracer</button>
     </div>
-    <div id="ref-objects-list">
-      ${buildRefObjList(q)}
-    </div>
+    <div id="ref-objects-list"></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
       <button class="tag-btn" id="q-add-point">+ Point</button>
       <button class="tag-btn" id="q-add-segment">+ Segment</button>
@@ -1344,13 +1342,6 @@ function renderQuestionEditor() {
       // Update canvas zones immediately
       if (q.activeZones.size > 0) geoApp.defineZones([...q.activeZones], 8, 6, 0.5);
       else geoApp.hideZones();
-    });
-  });
-
-  document.querySelectorAll('.ref-obj-del-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      removeRefObject(parseInt(btn.dataset.id));
-      renderQuestionEditor();
     });
   });
 
@@ -1414,6 +1405,9 @@ function renderQuestionEditor() {
   });
 
   wireFigureGroupDelBtns(q);
+
+  // Branche les boutons rôle et del du panneau objets de référence
+  syncRefObjPanel();
 }
 
 function wireFigureGroupDelBtns(q) {
