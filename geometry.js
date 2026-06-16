@@ -908,8 +908,12 @@ function drawPoint(obj) {
   const r = sel || hov ? 6 : 5;
 
   if (sel) {
+    // Halo extérieur jaune
+    ctx.beginPath(); ctx.arc(c.x, c.y, r + 6, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,220,50,0.18)'; ctx.fill();
+    // Anneau jaune visible
     ctx.beginPath(); ctx.arc(c.x, c.y, r + 3, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255,220,100,0.2)'; ctx.fill();
+    ctx.strokeStyle = 'rgba(255,220,50,0.9)'; ctx.lineWidth = 2.5; ctx.stroke();
   }
 
   // Group membership highlight
@@ -922,7 +926,7 @@ function drawPoint(obj) {
   }
 
   ctx.beginPath(); ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
-  ctx.fillStyle = objStroke(obj);
+  ctx.fillStyle = sel ? 'rgba(255,220,50,1)' : objStroke(obj);
   ctx.fill();
 
   ctx.beginPath(); ctx.arc(c.x, c.y, r - 2, 0, Math.PI * 2);
@@ -930,7 +934,7 @@ function drawPoint(obj) {
   ctx.fill();
 
   // Label
-  ctx.fillStyle = objStroke(obj);
+  ctx.fillStyle = sel ? 'rgba(255,220,50,1)' : objStroke(obj);
   ctx.font = 'bold 12px serif';
   ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
   ctx.fillText(obj.label, c.x + 7, c.y - 4);
