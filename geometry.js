@@ -1746,6 +1746,11 @@ canvas.addEventListener('mousedown', e => {
       state.isDraggingGroup = hitGroup.id;
       state.groupDragOffset = { dx: pivot.x - world.x, dy: pivot.y - world.y };
       state.groupDragOrigPos = { x: pivot.x, y: pivot.y };
+      // Si le groupe était dans une zone verte, la repasser en active au début du drag
+      if (state.exerciseMode) {
+        const currentZone = getGroupZoneAt(pivot.x, pivot.y);
+        if (currentZone && currentZone.state === 'green') currentZone.state = 'active';
+      }
       canvas.style.cursor = 'grabbing';
       render(); return;
     }
