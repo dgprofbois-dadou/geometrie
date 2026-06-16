@@ -1767,7 +1767,8 @@ canvas.addEventListener('mousedown', e => {
       if (ptIds.length > 0 || obj.type === 'text') {
         state.isDragging = true;
         state.dragTarget = obj.id;
-        state.dragLastWorld = { x: world.x, y: world.y };
+        const snL = snapToGrid(world.x, world.y);
+        state.dragLastWorld = { x: snL.x, y: snL.y };
         state.selected = [obj.id];
         showProperties(obj);
         canvas.style.cursor = 'grabbing';
@@ -1870,9 +1871,11 @@ canvas.addEventListener('mousemove', e => {
     }
     // Drag non-point object (segment, circle, polygon, etc.) — move all defining points
     if (obj && state.dragLastWorld) {
-      const ddx = world.x - state.dragLastWorld.x;
-      const ddy = world.y - state.dragLastWorld.y;
-      state.dragLastWorld = { x: world.x, y: world.y };
+      const snappedDrag = snapToGrid(world.x, world.y);
+      const ddx = snappedDrag.x - state.dragLastWorld.x;
+      const ddy = snappedDrag.y - state.dragLastWorld.y;
+      if (ddx === 0 && ddy === 0) { render(); return; }
+      state.dragLastWorld = { x: snappedDrag.x, y: snappedDrag.y };
       // If in a group, move all group members
       if (obj.groupId && state.editingGroupId !== obj.groupId) {
         const movedSet = new Set();
