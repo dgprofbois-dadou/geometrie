@@ -1937,15 +1937,8 @@ canvas.addEventListener('mouseup', e => {
         const close = Math.hypot(dx, dy) <= tol;
         if (inTarget && close) {
           if (zone) zone.state = 'green';
-          // Snap to exact target position
-          const ddx = fg.targetX - pivot.x, ddy = fg.targetY - pivot.y;
-          pivot.x = fg.targetX; pivot.y = fg.targetY;
-          fg.objectIds.forEach(oid => {
-            const o = state.objects.find(ob => ob.id === oid);
-            if (!o) return;
-            if (o.x != null) { o.x += ddx; o.y += ddy; }
-            if (o.x1 != null) { o.x1 += ddx; o.y1 += ddy; o.x2 += ddx; o.y2 += ddy; }
-          });
+          // Snap to exact target: move all defining points
+          geoApp.resetGroupToStart(fg.id, fg.targetX, fg.targetY);
         } else if (inTarget) {
           if (zone) zone.state = 'yellow';
         } else {

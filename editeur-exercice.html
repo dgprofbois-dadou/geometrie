@@ -1832,8 +1832,34 @@ function generateJS(data) {
     const q = EXERCISE.questions[currentQIdx];
     if (!q) return 0;
 
-    // IDs des objets dans les figureGroups (validés par le système DnD, pas ici)
+    // IDs des objets DnD + leurs points constitutifs (expansion bidirectionnelle)
     var fgObjIds = new Set((q.figureGroups || []).flatMap(function(fg) { return fg.objectIds || []; }));
+    // Ajouter aussi les pivots
+    if (q.figureGroups) q.figureGroups.forEach(function(fg) {
+      var pivot = (q.geoState || []).find(function(o) { return o.label === fg.pivotLabel; });
+      if (pivot) fgObjIds.add(pivot.id);
+    });
+    // Expansion : objets → points constitutifs et points → objets parents
+    var changed = true;
+    while (changed) {
+      changed = false;
+      (q.geoState || []).forEach(function(o) {
+        if (fgObjIds.has(o.id)) {
+          [o.p1id, o.p2id, o.centerId, o.pointId].forEach(function(pid) {
+            if (pid != null && !fgObjIds.has(pid)) { fgObjIds.add(pid); changed = true; }
+          });
+          if (Array.isArray(o.pointIds)) o.pointIds.forEach(function(pid) {
+            if (!fgObjIds.has(pid)) { fgObjIds.add(pid); changed = true; }
+          });
+        } else {
+          var refs = [o.p1id, o.p2id, o.centerId, o.pointId].filter(function(x) { return x != null; });
+          if (Array.isArray(o.pointIds)) refs = refs.concat(o.pointIds);
+          if (refs.length > 0 && refs.every(function(pid) { return fgObjIds.has(pid); })) {
+            fgObjIds.add(o.id); changed = true;
+          }
+        }
+      });
+    }
 
     const all = geoApp.getAllObjects();
     // Objets élève : ni fixés, ni internes, ni membres d'un figureGroup
