@@ -1590,6 +1590,7 @@ function buildExerciseData() {
     const given    = objs.filter(o => roleMap[o.id] === 'given');
     const expected = objs.filter(o => roleMap[o.id] !== 'given');
 
+    // Legacy: points/segments for validation (kept for compatibility)
     const givenPoints = given.filter(o => o.type === 'point' || o.type === 'midpoint').map(o => ({
       label: o.label, x: o.x, y: o.y, color: o.color || '', lineWidth: o.lineWidth ?? 2
     }));
@@ -1607,6 +1608,11 @@ function buildExerciseData() {
       return { label: o.label, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
     }).filter(Boolean);
 
+    // Full geoState for direct replay + role annotations
+    const givenIds = new Set(given.map(o => o.id));
+    // IDs of objects that belong to any figureGroup (will be moved to palette)
+    const figureGroupObjIds = new Set((q.figureGroups || []).flatMap(fg => fg.objectIds || []));
+
     return {
       num: q.num,
       instructions: q.instructions,
@@ -1623,6 +1629,11 @@ function buildExerciseData() {
         tolerance: fg.tolerance || q.tolerance || 1,
         startX: fg.startX, startY: fg.startY
       })),
+      // Complete scene state: all objects + their roles
+      geoState: objs,
+      givenIds: [...givenIds],
+      figureGroupObjIds: [...figureGroupObjIds],
+      // Legacy validation data (points/segments only)
       givenPoints, givenSegments, expectedPoints, expectedSegments
     };
   });
@@ -1694,10 +1705,29 @@ function generateJS(data) {
     const q = EXERCISE.questions[idx];
     if (!q) return;
 
-    clearStudentObjects();
     questionScores[idx] = 0;
+    for (const k in studentObjects) delete studentObjects[k];
     geoApp.setQuestion(q.num, EXERCISE.totalQuestions);
     geoApp.setInstructions(q.instructions || EXERCISE.globalInstructions);
+
+    // ── Charger le geoState complet (tous les objets dessinés par le prof) ──
+    if (q.geoState && q.geoState.length > 0) {
+      var givenIdSet = new Set(q.givenIds || []);
+      var fgObjIdSet = new Set(q.figureGroupObjIds || []);
+      // Clone et fixe les objets "donnés", masque les objets "à tracer" hors figureGroup
+      var stateToLoad = q.geoState.map(function(o) {
+        var clone = JSON.parse(JSON.stringify(o));
+        if (givenIdSet.has(o.id)) {
+          clone.fixed = true; // donné = fixe, non déplaçable par l'élève
+        } else if (!fgObjIdSet.has(o.id)) {
+          clone.visible = false; // "à tracer" hors DnD = caché (l'élève doit le tracer)
+        }
+        return clone;
+      });
+      geoApp.loadGeoState(stateToLoad);
+    } else {
+      geoApp.loadGeoState([]);
+    }
 
     // Zones orthographiques
     geoApp.clearFigureGroups();
@@ -1712,33 +1742,11 @@ function generateJS(data) {
       q.figureGroups.forEach(function(fg) {
         geoApp.defineFigureGroup(fg.id, fg.label, fg.objectIds, fg.pivotLabel, fg.targetZoneId, fg.targetX, fg.targetY, fg.tolerance, fg.startX, fg.startY);
       });
-      // Move all figures to their start (palette) positions
       geoApp.resetAllGroupsToStart();
       geoApp.onGroupMoved(function(groupId, zoneId, x, y) {
         scheduleValidate();
       });
     }
-
-    // ── Objets DONNÉS : visibles, fixes, stylés ──────
-    (q.givenPoints || []).forEach(function(p) {
-      geoApp.evalCommand('__giv_' + p.label + ' = Point(' + p.x + ', ' + p.y + ')');
-      geoApp.setFixed('__giv_' + p.label, true);
-      geoApp.setVisible('__giv_' + p.label, true);
-      geoApp.setColor('__giv_' + p.label, 249, 226, 175); // jaune
-    });
-    (q.givenSegments || []).forEach(function(s, i) {
-      var n = '__givs' + i;
-      var a = '__giva' + i, b = '__givb' + i;
-      geoApp.evalCommand(a + ' = Point(' + s.x1 + ',' + s.y1 + ')');
-      geoApp.evalCommand(b + ' = Point(' + s.x2 + ',' + s.y2 + ')');
-      geoApp.setFixed(a, true); geoApp.setVisible(a, false);
-      geoApp.setFixed(b, true); geoApp.setVisible(b, false);
-      // Segment entre les deux points
-      geoApp.evalCommand(n + ' = Segment(' + a + ',' + b + ')');
-      geoApp.setFixed(n, true);
-      geoApp.setColor(n, 249, 226, 175); // jaune
-      if (s.lineStyle === 'dashed') geoApp.setLineStyle(n, 3);
-    });
   }
 
   function validateQuestion() {

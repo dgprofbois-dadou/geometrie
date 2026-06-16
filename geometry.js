@@ -2502,6 +2502,14 @@ const geoApp = {
 
   onObjectDeleted(cb) { state._onObjectDeletedCb = cb; },
 
+  loadGeoState(objects) {
+    state.objects = JSON.parse(JSON.stringify(objects || []));
+    // Reset nextId to avoid collisions
+    const maxId = state.objects.reduce((m, o) => Math.max(m, typeof o.id === 'number' ? o.id : 0), 0);
+    if (maxId >= nextId) nextId = maxId + 1;
+    evalAll(); render(); updateAlgebra();
+  },
+
   setValue(name, val) { geoVars[name] = val; },
   getValue(name) { return geoVars[name]; },
 
