@@ -254,6 +254,13 @@
       overflow: hidden;
     }
 
+    #right-panel-scroll {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
+
     #right-panel > .panel-section:first-child { flex-shrink: 0; }
 
     #questions-header {
@@ -829,6 +836,8 @@
       <button id="btn-add-question">+ Ajouter</button>
     </div>
 
+    <div id="right-panel-scroll">
+
     <div id="questions-list"></div>
 
     <!-- Palette de l'élève -->
@@ -897,7 +906,9 @@
     <div id="question-editor">
       <div class="no-q">Sélectionnez ou créez une question.</div>
     </div>
-  </div>
+
+    </div><!-- end #right-panel-scroll -->
+  </div><!-- end #right-panel -->
 
 </div>
 
