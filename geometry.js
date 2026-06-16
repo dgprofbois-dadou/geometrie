@@ -920,11 +920,11 @@ function drawPoint(obj) {
 
   if (sel) {
     // Halo extérieur jaune
-    ctx.beginPath(); ctx.arc(c.x, c.y, r + 6, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255,220,50,0.18)'; ctx.fill();
-    // Anneau jaune visible
-    ctx.beginPath(); ctx.arc(c.x, c.y, r + 3, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(255,220,50,0.9)'; ctx.lineWidth = 2.5; ctx.stroke();
+    ctx.beginPath(); ctx.arc(c.x, c.y, r + 9, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,220,50,0.22)'; ctx.fill();
+    // Anneau jaune épais
+    ctx.beginPath(); ctx.arc(c.x, c.y, r + 4, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255,220,50,1)'; ctx.lineWidth = 3; ctx.stroke();
   }
 
   // Group membership highlight
@@ -956,7 +956,7 @@ function drawSegment(obj) {
   if (!p1 || !p2) return;
   const c1 = worldToCanvas(p1.x, p1.y), c2 = worldToCanvas(p2.x, p2.y);
   ctx.beginPath(); ctx.moveTo(c1.x, c1.y); ctx.lineTo(c2.x, c2.y);
-  ctx.strokeStyle = objStroke(obj); ctx.lineWidth = isSelected(obj) ? 2.5 : (obj.lineWidth || 2);
+  ctx.strokeStyle = objStroke(obj); ctx.lineWidth = isSelected(obj) ? 3.5 : (obj.lineWidth || 2);
   ctx.stroke();
 }
 
@@ -1000,7 +1000,7 @@ function extendAndDraw(p1w, p2w, obj, clampStart, clampEnd) {
   ctx.moveTo(c1.x + tMin * dx, c1.y + tMin * dy);
   ctx.lineTo(c1.x + tMax * dx, c1.y + tMax * dy);
   ctx.strokeStyle = objStroke(obj);
-  ctx.lineWidth = isSelected(obj) ? 2.5 : (obj.lineWidth || 2);
+  ctx.lineWidth = isSelected(obj) ? 3.5 : (obj.lineWidth || 2);
   ctx.stroke();
 }
 
@@ -1026,7 +1026,7 @@ function drawDerivedLine(obj) {
   ctx.moveTo(c.x + tMin * dx, c.y + tMin * dy);
   ctx.lineTo(c.x + tMax * dx, c.y + tMax * dy);
   ctx.strokeStyle = objStroke(obj);
-  ctx.lineWidth = isSelected(obj) ? 2.5 : (obj.lineWidth || 2);
+  ctx.lineWidth = isSelected(obj) ? 3.5 : (obj.lineWidth || 2);
   ctx.stroke();
 }
 
@@ -1035,7 +1035,7 @@ function drawVector(obj) {
   if (!p1 || !p2) return;
   const c1 = worldToCanvas(p1.x, p1.y), c2 = worldToCanvas(p2.x, p2.y);
   ctx.beginPath(); ctx.moveTo(c1.x, c1.y); ctx.lineTo(c2.x, c2.y);
-  ctx.strokeStyle = objStroke(obj); ctx.lineWidth = isSelected(obj) ? 2.5 : (obj.lineWidth || 2);
+  ctx.strokeStyle = objStroke(obj); ctx.lineWidth = isSelected(obj) ? 3.5 : (obj.lineWidth || 2);
   ctx.stroke();
   // Arrow head
   const angle = Math.atan2(c2.y - c1.y, c2.x - c1.x);
@@ -1054,7 +1054,7 @@ function drawCircle(obj) {
   const cc = worldToCanvas(cen.x, cen.y);
   const rPx = obj.r * state.scale;
   ctx.beginPath(); ctx.arc(cc.x, cc.y, rPx, 0, Math.PI * 2);
-  ctx.strokeStyle = objStroke(obj); ctx.lineWidth = isSelected(obj) ? 2.5 : (obj.lineWidth || 2);
+  ctx.strokeStyle = objStroke(obj); ctx.lineWidth = isSelected(obj) ? 3.5 : (obj.lineWidth || 2);
   ctx.stroke();
   if (isSelected(obj)) {
     ctx.beginPath(); ctx.arc(cc.x, cc.y, rPx, 0, Math.PI * 2);
@@ -1067,7 +1067,7 @@ function drawCircle3pts(obj) {
   const cc = worldToCanvas(obj.cx, obj.cy);
   const rPx = obj.r * state.scale;
   ctx.beginPath(); ctx.arc(cc.x, cc.y, rPx, 0, Math.PI * 2);
-  ctx.strokeStyle = objStroke(obj); ctx.lineWidth = isSelected(obj) ? 2.5 : (obj.lineWidth || 2);
+  ctx.strokeStyle = objStroke(obj); ctx.lineWidth = isSelected(obj) ? 3.5 : (obj.lineWidth || 2);
   ctx.stroke();
 }
 
@@ -1109,7 +1109,7 @@ function drawRect(obj, fillOnly) {
     ctx.fillStyle = adjustAlpha(obj.fillColor || obj.color || '#7c9eff', alpha);
     ctx.fill();
   } else {
-    ctx.strokeStyle = objStroke(obj); ctx.lineWidth = isSelected(obj) ? 2.5 : (obj.lineWidth || 2);
+    ctx.strokeStyle = objStroke(obj); ctx.lineWidth = isSelected(obj) ? 3.5 : (obj.lineWidth || 2);
     ctx.stroke();
   }
 }
@@ -1129,7 +1129,7 @@ function drawPolygon(obj, fillOnly) {
     ctx.fillStyle = adjustAlpha(obj.color || '#7c9eff', 0.12);
     ctx.fill();
   } else {
-    ctx.strokeStyle = objStroke(obj); ctx.lineWidth = isSelected(obj) ? 2.5 : (obj.lineWidth || 2);
+    ctx.strokeStyle = objStroke(obj); ctx.lineWidth = isSelected(obj) ? 3.5 : (obj.lineWidth || 2);
     ctx.stroke();
   }
 }
@@ -1922,7 +1922,7 @@ canvas.addEventListener('mousemove', e => {
 
 canvas.addEventListener('mouseup', e => {
   if (state.isPanning) { state.isPanning = false; canvas.style.cursor = (state.tool === 'select' || state.tool === 'lasso') ? 'default' : 'crosshair'; }
-  if (state.isDragging) { state.isDragging = false; state.dragTarget = null; state.dragLastWorld = null; canvas.style.cursor = 'default'; saveUndo(); }
+  if (state.isDragging) { state.isDragging = false; state.dragTarget = null; state.dragLastWorld = null; canvas.style.cursor = 'default'; saveUndo(); render(); }
   if (state.isDraggingGroup) {
     const fg = state.figureGroups.find(g => g.id === state.isDraggingGroup);
     if (fg) {
