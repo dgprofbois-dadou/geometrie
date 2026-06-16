@@ -1647,6 +1647,7 @@ function deleteObject(id) {
   saveUndo();
   updateAlgebra();
   render();
+  if (state._onObjectDeletedCb) state._onObjectDeletedCb(id);
 }
 
 // ── Group helpers ─────────────────────────────────
@@ -2495,9 +2496,11 @@ const geoApp = {
   },
 
   deleteObject(name) {
-    const idx = state.objects.findIndex(o => o.label === name);
-    if (idx >= 0) { state.objects.splice(idx, 1); evalAll(); render(); updateAlgebra(); }
+    const obj = state.objects.find(o => o.label === name);
+    if (obj) { deleteObject(obj.id); evalAll(); }
   },
+
+  onObjectDeleted(cb) { state._onObjectDeletedCb = cb; },
 
   setValue(name, val) { geoVars[name] = val; },
   getValue(name) { return geoVars[name]; },

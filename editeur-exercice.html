@@ -1536,6 +1536,17 @@ function syncRefObjPanel() {
   syncQuestionList();
 }
 
+// Sync panneau droite quand un objet est supprimé depuis le canvas
+geoApp.onObjectDeleted(function(deletedId) {
+  const q = currentQuestion();
+  if (q) {
+    if (q.roleMap) delete q.roleMap[deletedId];
+    saveCurrentGeoState();
+    scheduleSave();
+  }
+  syncRefObjPanel();
+});
+
 // ══════════════════════════════════════════════════════
 // LEFT PANEL SYNC
 // ══════════════════════════════════════════════════════
