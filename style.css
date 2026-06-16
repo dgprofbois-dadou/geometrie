@@ -566,15 +566,13 @@ body {
 
 /* ── Exercise panel ── */
 #exercise-panel {
-  position: fixed;
-  right: 0; top: 0; bottom: 0;
   width: 260px;
+  flex-shrink: 0;
   background: var(--surface);
   border-left: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   gap: 0;
-  z-index: 50;
   overflow-y: auto;
   scrollbar-width: thin;
 }

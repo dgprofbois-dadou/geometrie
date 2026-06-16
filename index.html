@@ -280,20 +280,19 @@
         </div>
       </div>
     </div>
-  </div>
 
-  <!-- Panneau exercice (côté droit fixe) -->
-  <div id="exercise-panel" class="hidden">
-    <div id="ex-header">
-      <span id="ex-title">Exercice</span>
-      <div id="ex-meta">
-        <span id="ex-question-num">-</span>
-        <span id="ex-score-label">Score :</span>
-        <span id="ex-score">0 / 0</span>
-      </div>
-      <label id="ex-load-btn" title="Charger un exercice (.js)">
-        ⬆ Charger
-        <input type="file" id="ex-file-input" accept=".js" style="display:none">
+    <!-- Panneau exercice (côté droit) -->
+    <div id="exercise-panel" class="hidden">
+      <div id="ex-header">
+        <span id="ex-title">Exercice</span>
+        <div id="ex-meta">
+          <span id="ex-question-num">-</span>
+          <span id="ex-score-label">Score :</span>
+          <span id="ex-score">0 / 0</span>
+        </div>
+        <label id="ex-load-btn" title="Charger un exercice (.js)">
+          ⬆ Charger
+          <input type="file" id="ex-file-input" accept=".js" style="display:none">
       </label>
     </div>
 
@@ -331,7 +330,9 @@
       <button id="ex-btn-next" class="ex-btn">Suivant →</button>
       <button id="ex-btn-reset" class="ex-btn ex-btn-danger">↺ Réinit.</button>
     </div>
-  </div>
+    </div><!-- end #exercise-panel -->
+  </div><!-- end #main-area -->
+  </div><!-- end #app -->
 
   <!-- Dialogue de propriétés -->
   <div id="properties-panel" class="hidden">
@@ -340,8 +341,6 @@
       <button id="prop-close">✕</button>
     </div>
     <div id="properties-content"></div>
-  </div>
-
   <!-- Dialogue de saisie angle/distance pour rotation/translation -->
   <div id="input-dialog" class="hidden">
     <div id="input-dialog-inner">
