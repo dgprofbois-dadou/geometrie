@@ -350,7 +350,18 @@ function hitTestCircle(cw, r, cx, cy) {
   return Math.abs(d - rPx) <= HIT_RADIUS_PX;
 }
 
-function objectAtCanvas(cx, cy) {
+function objectAtCanvas(cx, cy, preferPoints = false) {
+  // In select mode, check points first so endpoint clicks grab the point, not the parent line
+  if (preferPoints) {
+    for (let i = state.objects.length - 1; i >= 0; i--) {
+      const obj = state.objects[i];
+      if (!obj.visible) continue;
+      if (obj.type !== 'point' && obj.type !== 'midpoint' && obj.type !== 'intersect' &&
+          obj.type !== 'reflect-line' && obj.type !== 'reflect-point' &&
+          obj.type !== 'rotate' && obj.type !== 'translate') continue;
+      if (hitTestObject(obj, cx, cy)) return obj;
+    }
+  }
   // Check in reverse order (topmost first)
   for (let i = state.objects.length - 1; i >= 0; i--) {
     const obj = state.objects[i];
@@ -1726,7 +1737,7 @@ canvas.addEventListener('mousedown', e => {
       canvas.style.cursor = 'grabbing';
       render(); return;
     }
-    const obj = objectAtCanvas(pos.x, pos.y);
+    const obj = objectAtCanvas(pos.x, pos.y, true);
     // Shift+right-click: remove from selection
     if (e.button === 2 && e.shiftKey && obj) {
       state.selected = state.selected.filter(id => id !== obj.id);
@@ -1893,7 +1904,7 @@ canvas.addEventListener('mousemove', e => {
   }
 
   // Hover
-  const hit = objectAtCanvas(pos.x, pos.y);
+  const hit = objectAtCanvas(pos.x, pos.y, state.tool === 'select');
   const newHover = hit ? hit.id : null;
   if (newHover !== state.hover) {
     state.hover = newHover;
