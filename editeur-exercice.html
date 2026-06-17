@@ -586,7 +586,6 @@
   <a href="index.html" class="topbar-btn" title="Retour à l'application">← Retour</a>
   <h1>Éditeur d'exercices — Représentation orthographique</h1>
   <span id="autosave-status" style="font-size:10px;color:var(--text-muted)">—</span>
-  <button class="topbar-btn" id="btn-preview-student" title="Aperçu élève : masque les objets À tracer" style="background:var(--surface2)">👁 Aperçu élève</button>
   <button class="topbar-btn" id="btn-test" title="Tester dans l'application (nouvel onglet)">▶ Tester</button>
   <button class="topbar-btn" id="btn-preview-json" title="Aperçu JSON">{ } JSON</button>
   <button class="topbar-btn primary" id="btn-editor-export">⬇ Exporter .js</button>
@@ -1839,6 +1838,11 @@ function buildExerciseData() {
     // IDs of objects that belong to any figureGroup (will be moved to palette)
     const figureGroupObjIds = new Set((q.figureGroups || []).flatMap(fg => fg.objectIds || []));
 
+    // Annotate each object with its role directly for reliable lookup in loadQuestion
+    const annotatedGeoState = objs.map(o => Object.assign({}, o, {
+      _role: roleMap[o.id] === 'given' ? 'given' : 'expected'
+    }));
+
     return {
       num: q.num,
       instructions: q.instructions,
@@ -1857,8 +1861,8 @@ function buildExerciseData() {
         alignConstraint: fg.alignConstraint || null,
         mobile: fg.mobile !== false
       })),
-      // Complete scene state: all objects + their roles
-      geoState: objs,
+      // Complete scene state: all objects + their roles embedded
+      geoState: annotatedGeoState,
       givenIds: [...givenIds],
       figureGroupObjIds: [...figureGroupObjIds],
       // Legacy validation data (points/segments only)
@@ -2003,13 +2007,15 @@ function generateJS(data) {
       // Les groupes fixes : membres visibles + fixes, pas de pivot visible
       var stateToLoad = q.geoState.map(function(o) {
         var clone = JSON.parse(JSON.stringify(o));
+        // Use embedded _role when available, fall back to givenIdSet for backwards compatibility
+        var isGiven = o._role === 'given' || (o._role === undefined && givenIdSet.has(o.id));
         if (fixedPivotIds.has(o.id)) {
           clone.visible = false; // pivot groupe fixe : caché
           clone.fixed = true;
         } else if (fixedFgObjIdSet.has(o.id)) {
           clone.fixed = true;   // membres groupe fixe : visibles et immobiles
-        } else if (givenIdSet.has(o.id)) {
-          clone.fixed = true;
+        } else if (isGiven) {
+          clone.fixed = true;   // donné : visible et fixe
         } else if (pivotIds.has(o.id)) {
           clone.fixed = false;  // pivot mobile : déplaçable (drag handle)
           clone.visible = false; // invisible mais actif
@@ -2344,36 +2350,6 @@ const _patchSave = fn => function(...args) { const r = fn(...args); scheduleSave
 new MutationObserver(scheduleSave).observe(
   document.getElementById('questions-list'), { childList: true, subtree: true }
 );
-
-// ── Bouton Aperçu élève ────────────────────────────
-(function() {
-  let previewActive = false;
-  const btn = document.getElementById('btn-preview-student');
-  btn.addEventListener('click', () => {
-    previewActive = !previewActive;
-    btn.classList.toggle('role-active', previewActive);
-    btn.title = previewActive ? 'Retour mode édition' : 'Aperçu élève : masque les objets À tracer';
-    const q = currentQuestion();
-    const roleMap = (q && q.roleMap) || {};
-    state.objects.forEach(o => {
-      if (o.label && o.label.startsWith('__')) return; // skip internal objects
-      if (previewActive) {
-        // Hide expected / no-role objects; keep given visible
-        o._editorVisible = o.visible; // save original
-        o.visible = roleMap[o.id] === 'given';
-      } else {
-        // Restore
-        if (o._editorVisible !== undefined) o.visible = o._editorVisible;
-        delete o._editorVisible;
-      }
-    });
-    if (!previewActive) {
-      // Ensure all editor objects are visible when leaving preview
-      state.objects.forEach(o => { if (!o.label.startsWith('__')) o.visible = true; });
-    }
-    render();
-  });
-})();
 
 // ── Bouton Tester ─────────────────────────────────
 document.getElementById('btn-test').addEventListener('click', () => {
