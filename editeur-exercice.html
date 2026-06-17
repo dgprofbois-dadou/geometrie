@@ -2447,6 +2447,26 @@ document.getElementById('btn-test').addEventListener('click', () => {
   }
 });
 
+// ── Raccourci pavé numérique "." → focus objet sélectionné dans la liste de référence ──
+document.addEventListener('keydown', function(e) {
+  if (e.code === 'NumpadDecimal') {
+    e.preventDefault();
+    // Trouve l'objet sélectionné (canvas ou panneau)
+    const selId = (state.selected && state.selected.length) ? state.selected[0] : _selectedObjId;
+    if (selId == null) return;
+    // Scroll jusqu'à l'item dans ref-objects-list
+    const listEl = document.getElementById('ref-objects-list');
+    if (!listEl) return;
+    const item = listEl.querySelector('[data-id="' + selId + '"]');
+    if (item) {
+      item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      // Bref highlight
+      item.style.outline = '2px solid #89b4fa';
+      setTimeout(() => { item.style.outline = ''; }, 800);
+    }
+  }
+});
+
 // ── Collapsible sections ──────────────────────────
 (function() {
   function makeCollapsible(toggleId, bodyId, chevronEl) {
