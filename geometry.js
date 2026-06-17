@@ -2061,6 +2061,7 @@ canvas.addEventListener('mouseup', e => {
             }
           }
         }
+        fg.currentZoneId = zoneId; // track current zone for validation
         if (state.exerciseMode) {
           if (inTarget && alignOk) {
             if (zone) zone.state = 'green';
@@ -2922,9 +2923,14 @@ const geoApp = {
 
   // ── Introspection (for exercise validation) ───────
 
+  getFigureGroupCurrentZone(groupId) {
+    const fg = state.figureGroups.find(g => g.id === groupId);
+    return fg ? fg.currentZoneId : null;
+  },
+
   getAllObjects() {
     return state.objects.map(obj => {
-      const info = { label: obj.label, type: obj.type, visible: obj.visible, fixed: !!obj.fixed, dashed: !!obj.dashed };
+      const info = { id: obj.id, label: obj.label, type: obj.type, visible: obj.visible, fixed: !!obj.fixed, dashed: !!obj.dashed, _role: obj._role };
       if (isPointLike(obj)) { info.x = obj.x; info.y = obj.y; }
       if (obj.type === 'segment' || obj.type === 'line' || obj.type === 'ray' || obj.type === 'vector') {
         const p1 = getPoint(obj.p1id), p2 = getPoint(obj.p2id);

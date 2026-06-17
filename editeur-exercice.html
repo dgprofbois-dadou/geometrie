@@ -1870,8 +1870,16 @@ function buildExerciseData() {
     };
   });
 
-  const maxScore = questions.reduce((acc, q) =>
-    acc + (q.expectedPoints.length + q.expectedSegments.length) * q.pointsPerCorrect, 0);
+  const maxScore = questions.reduce((acc, q) => {
+    // Count expected figureGroup member segments (À tracer in groups)
+    const fgExpectedSegs = (q.figureGroups || []).reduce((n, fg) => {
+      return n + (fg.objectIds || []).filter(oid => {
+        const o = (q.geoState || []).find(ob => ob.id === oid);
+        return o && o.type === 'segment' && o._role === 'expected';
+      }).length;
+    }, 0);
+    return acc + (q.expectedPoints.length + q.expectedSegments.length + fgExpectedSegs) * q.pointsPerCorrect;
+  }, 0);
 
   return {
     title: exerciseData.title || 'Exercice sans titre',
@@ -2013,14 +2021,16 @@ function generateJS(data) {
           clone.visible = false; // pivot groupe fixe : caché
           clone.fixed = true;
         } else if (fixedFgObjIdSet.has(o.id)) {
-          clone.fixed = true;   // membres groupe fixe : visibles et immobiles
+          clone.fixed = true;
+          if (!isGiven) clone.visible = false; // "à tracer" dans groupe fixe : caché
         } else if (isGiven) {
           clone.fixed = true;   // donné : visible et fixe
         } else if (pivotIds.has(o.id)) {
           clone.fixed = false;  // pivot mobile : déplaçable (drag handle)
           clone.visible = false; // invisible mais actif
         } else if (fgObjIdSet.has(o.id)) {
-          clone.fixed = true;   // membres groupe mobile : fixés, bougent via pivot
+          clone.fixed = true;
+          if (!isGiven) clone.visible = false; // "à tracer" dans groupe mobile : caché mais bougera avec pivot
         } else {
           clone.visible = false; // "à tracer" hors DnD : caché
         }
@@ -2143,6 +2153,48 @@ function generateJS(data) {
         geoApp.setColor(best.label, 243, 139, 168); // rouge
       }
     });
+
+    // ── Vérification des segments "À tracer" dans les groupes ───
+    // Les segments masqués membres d'un groupe sont validés quand le groupe est dans la bonne zone
+    if (q.figureGroups && q.figureGroups.length > 0) {
+      var allObjs = geoApp.getAllObjects();
+      q.figureGroups.forEach(function(fg) {
+        var currentZone = geoApp.getFigureGroupCurrentZone ? geoApp.getFigureGroupCurrentZone(fg.id) : null;
+        var inTarget = currentZone != null && fg.targetZoneId != null && currentZone === fg.targetZoneId;
+        if (!inTarget) return; // groupe pas en bonne zone : pas de validation des À tracer
+        var fgObjIdsFull = new Set(fg.objectIds || []);
+        // Segments cachés (à tracer) du groupe : leurs positions actuelles = positions attendues
+        var hiddenGroupSegs = allObjs.filter(function(o) {
+          return o.type === 'segment' && !o.visible && fgObjIdsFull.has(o.id) && o.p1 && o.p2;
+        });
+        hiddenGroupSegs.forEach(function(ref) {
+          var best = null, bestScore = -1;
+          studentSegs.forEach(function(s) {
+            if (usedStudentSegs[s.label]) return;
+            if (!s.p1 || !s.p2) return;
+            var fwd = dist2d(s.p1.x,s.p1.y,ref.p1.x,ref.p1.y) + dist2d(s.p2.x,s.p2.y,ref.p2.x,ref.p2.y);
+            var rev = dist2d(s.p1.x,s.p1.y,ref.p2.x,ref.p2.y) + dist2d(s.p2.x,s.p2.y,ref.p1.x,ref.p1.y);
+            var sc = -Math.min(fwd, rev);
+            if (sc > bestScore) { bestScore = sc; best = s; }
+          });
+          if (!best) return;
+          var fwd = dist2d(best.p1.x,best.p1.y,ref.p1.x,ref.p1.y) <= tol && dist2d(best.p2.x,best.p2.y,ref.p2.x,ref.p2.y) <= tol;
+          var rev = dist2d(best.p1.x,best.p1.y,ref.p2.x,ref.p2.y) <= tol && dist2d(best.p2.x,best.p2.y,ref.p1.x,ref.p1.y) <= tol;
+          if (fwd || rev) {
+            var styleOk = !ref.dashed || (!!geoApp.getAllObjects().find(function(o){ return o.label===best.label; }) && !!geoApp.getAllObjects().find(function(o){ return o.label===best.label; }).dashed === !!ref.dashed);
+            if (styleOk) {
+              geoApp.setColor(best.label, 166, 227, 161); // vert
+              gained += ppc;
+              usedStudentSegs[best.label] = true;
+            } else {
+              geoApp.setColor(best.label, 250, 179, 135); // orange: style incorrect
+            }
+          } else {
+            geoApp.setColor(best.label, 243, 139, 168); // rouge
+          }
+        });
+      });
+    }
 
     questionScores[currentQIdx] = gained;
     var total = getTotalScore();
