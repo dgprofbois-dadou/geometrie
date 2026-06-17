@@ -1535,7 +1535,7 @@ function renderQuestionEditor() {
 
 function syncFigureGroupsToCanvas(q) {
   geoApp.clearFigureGroups();
-  (q.figureGroups || []).forEach(fg => geoApp.defineFigureGroup(fg.id, fg.label, fg.objectIds, fg.pivotLabel, fg.targetZoneId, fg.targetX, fg.targetY, fg.tolerance, fg.startX, fg.startY, fg.alignConstraint, fg.mobile));
+  (q.figureGroups || []).forEach(fg => geoApp.defineFigureGroup(fg.id, fg.label, fg.objectIds, fg.pivotLabel, fg.targetZoneId, fg.targetX, fg.targetY, fg.tolerance, fg.startX, fg.startY, fg.alignConstraint, fg.mobile, fg.rotationStep));
   render();
 }
 
@@ -1580,6 +1580,12 @@ function wireFigureGroupDelBtns(q) {
 }
 
 function wireFigureGroupAlignControls(q) {
+  document.querySelectorAll('.fg-rotation-step').forEach(inp => {
+    inp.addEventListener('input', function() {
+      const fg = (q.figureGroups || []).find(g => g.id === this.dataset.fgid);
+      if (fg) { fg.rotationStep = parseInt(this.value) || 90; scheduleSave(); syncFigureGroupsToCanvas(q); }
+    });
+  });
   document.querySelectorAll('.fg-align-ref').forEach(sel => {
     sel.addEventListener('change', function() {
       const fg = (q.figureGroups || []).find(g => g.id === this.dataset.fgid);
@@ -1629,6 +1635,9 @@ function buildFigureGroupsList(q) {
         <button class="tag-btn fg-del-btn" data-fgid="${fg.id}" style="color:var(--danger);padding:1px 5px">✕</button>
       </div>
       ${isMobile ? `<div style="padding:4px 8px 6px;border-top:1px solid var(--border);background:rgba(0,0,0,.15);font-size:10px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+        <label style="color:var(--text-muted);display:flex;align-items:center;gap:4px">Rotation (°) :
+          <input type="number" class="fg-rotation-step" data-fgid="${fg.id}" value="${fg.rotationStep != null ? fg.rotationStep : 90}" min="1" max="180" step="1" style="width:48px;font-size:10px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:3px;padding:1px 3px">
+        </label>
         <span style="color:var(--text-muted)">Alignement :</span>
         <select class="fg-align-axis" data-fgid="${fg.id}" style="font-size:10px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:3px;padding:1px 3px">
           <option value="" ${axisNone}>Aucun</option>
@@ -1886,7 +1895,8 @@ function buildExerciseData() {
         tolerance: fg.tolerance || q.tolerance || 1,
         startX: fg.startX, startY: fg.startY,
         alignConstraint: fg.alignConstraint || null,
-        mobile: fg.mobile !== false
+        mobile: fg.mobile !== false,
+        rotationStep: fg.rotationStep != null ? fg.rotationStep : 90
       })),
       // Complete scene state: all objects + their roles embedded
       geoState: annotatedGeoState,
