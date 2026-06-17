@@ -547,6 +547,21 @@
     ::-webkit-scrollbar { width: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* Algebra list (objects panel) */
+    .algebra-item {
+      display: flex; align-items: center; gap: 6px;
+      padding: 4px 10px; font-size: 11px; cursor: pointer;
+      border-bottom: 1px solid var(--border); transition: background .1s;
+    }
+    .algebra-item:hover { background: var(--highlight); }
+    .algebra-item.selected { background: rgba(137,180,250,.18); border-left: 2px solid var(--accent); }
+    .algebra-item.hidden-obj { opacity: 0.4; }
+    .algebra-color { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+    .algebra-label { font-weight: 600; min-width: 20px; }
+    .algebra-def { flex: 1; color: var(--text-muted); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .algebra-eye { background: none; border: none; cursor: pointer; padding: 0 2px; font-size: 12px; opacity: 0; transition: opacity .15s; }
+    .algebra-item:hover .algebra-eye { opacity: 1; }
   </style>
 </head>
 <body>
@@ -623,13 +638,9 @@
       </div>
     </div>
 
-    <div class="panel-section" style="flex:1">
-      <h3>À propos</h3>
-      <p style="font-size:11px;color:var(--text-muted);line-height:1.6">
-        Dessinez les objets de référence sur le canvas central.<br>
-        Chaque question peut avoir ses propres objets et zones actives.<br>
-        Cliquez <strong>Exporter .js</strong> pour générer le fichier exercice compatible avec l'application principale.
-      </p>
+    <div class="panel-section" style="flex:1;overflow:hidden;display:flex;flex-direction:column;padding:0">
+      <h3 style="padding:10px 14px 6px;margin:0;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--text-muted);border-bottom:1px solid var(--border);flex-shrink:0">Objets</h3>
+      <div id="algebra-list" style="flex:1;overflow-y:auto;scrollbar-width:thin"></div>
     </div>
   </div>
 
@@ -843,7 +854,7 @@
     <button id="btn-export" style="display:none"></button>
     <button id="toggle-algebra" style="display:none"></button>
     <button id="prop-close" style="display:none"></button>
-    <div id="algebra-panel" style="display:none"><div id="algebra-list"></div></div>
+    <div id="algebra-panel" style="display:none"></div>
     <div id="properties-panel" class="hidden" style="display:none">
       <button id="pname-ok" style="display:none"></button>
       <input id="pcolor" style="display:none">
