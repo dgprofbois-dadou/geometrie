@@ -586,6 +586,7 @@
   <a href="index.html" class="topbar-btn" title="Retour à l'application">← Retour</a>
   <h1>Éditeur d'exercices — Représentation orthographique</h1>
   <span id="autosave-status" style="font-size:10px;color:var(--text-muted)">—</span>
+  <button class="topbar-btn" id="btn-preview-student" title="Aperçu élève : masque les objets À tracer" style="background:var(--surface2)">👁 Aperçu élève</button>
   <button class="topbar-btn" id="btn-test" title="Tester dans l'application (nouvel onglet)">▶ Tester</button>
   <button class="topbar-btn" id="btn-preview-json" title="Aperçu JSON">{ } JSON</button>
   <button class="topbar-btn primary" id="btn-editor-export">⬇ Exporter .js</button>
@@ -2343,6 +2344,36 @@ const _patchSave = fn => function(...args) { const r = fn(...args); scheduleSave
 new MutationObserver(scheduleSave).observe(
   document.getElementById('questions-list'), { childList: true, subtree: true }
 );
+
+// ── Bouton Aperçu élève ────────────────────────────
+(function() {
+  let previewActive = false;
+  const btn = document.getElementById('btn-preview-student');
+  btn.addEventListener('click', () => {
+    previewActive = !previewActive;
+    btn.classList.toggle('role-active', previewActive);
+    btn.title = previewActive ? 'Retour mode édition' : 'Aperçu élève : masque les objets À tracer';
+    const q = currentQuestion();
+    const roleMap = (q && q.roleMap) || {};
+    state.objects.forEach(o => {
+      if (o.label && o.label.startsWith('__')) return; // skip internal objects
+      if (previewActive) {
+        // Hide expected / no-role objects; keep given visible
+        o._editorVisible = o.visible; // save original
+        o.visible = roleMap[o.id] === 'given';
+      } else {
+        // Restore
+        if (o._editorVisible !== undefined) o.visible = o._editorVisible;
+        delete o._editorVisible;
+      }
+    });
+    if (!previewActive) {
+      // Ensure all editor objects are visible when leaving preview
+      state.objects.forEach(o => { if (!o.label.startsWith('__')) o.visible = true; });
+    }
+    render();
+  });
+})();
 
 // ── Bouton Tester ─────────────────────────────────
 document.getElementById('btn-test').addEventListener('click', () => {
