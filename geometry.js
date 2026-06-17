@@ -42,6 +42,9 @@ const state = {
   groupDragOffset: null,  // {dx, dy} world offset
   groupDragOrigPos: null, // {x,y} original pivot position
   groupMovedCallback: null,
+  isRotatingGroup: null,     // group id being rotated (right-click on pivot)
+  rotationCenter: null,      // {x, y} world coords
+  rotationLastAngle: null,   // last angle for delta computation
   // label counter
   labelCounters: { point: 0, line: 0, circle: 0, polygon: 0, text: 0, angle: 0, measure: 0 },
   editingGroupId: null,        // type:group currently being edited
@@ -833,6 +836,30 @@ function render() {
 
   drawTempPreview();
   drawFigureGroupPivots();
+
+  // Indicateur de rotation (arc + flèches autour du pivot)
+  if (state.isRotatingGroup && state.rotationCenter) {
+    const c = worldToCanvas(state.rotationCenter.x, state.rotationCenter.y);
+    ctx.save();
+    ctx.strokeStyle = '#f9e2af';
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([5, 3]);
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, 28, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // Flèche rotation
+    const a = state.rotationLastAngle || 0;
+    const ax = c.x + 28 * Math.cos(a), ay = c.y + 28 * Math.sin(a);
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(ax + 6 * Math.cos(a + 2.4), ay + 6 * Math.sin(a + 2.4));
+    ctx.lineTo(ax + 6 * Math.cos(a - 2.4), ay + 6 * Math.sin(a - 2.4));
+    ctx.closePath();
+    ctx.fillStyle = '#f9e2af';
+    ctx.fill();
+    ctx.restore();
+  }
 
   // Draw lasso selection rectangle
   if (state.isLasso && state.lassoStart && state.lassoEnd) {
@@ -1772,6 +1799,24 @@ canvas.addEventListener('mousedown', e => {
     e.preventDefault(); return;
   }
 
+  // Clic droit sur pivot en mode exercice → rotation de la figure
+  if (e.button === 2 && state.exerciseMode && state.tool === 'select') {
+    const rotGroup = state.figureGroups.find(fg => {
+      const pivot = state.objects.find(o => o.id === fg.pivotId || o.label === fg.pivotLabel);
+      if (!pivot || !pivot.visible) return false;
+      const c = worldToCanvas(pivot.x, pivot.y);
+      return Math.hypot(c.x - pos.x, c.y - pos.y) <= 16;
+    });
+    if (rotGroup) {
+      const pivot = state.objects.find(o => o.id === rotGroup.pivotId || o.label === rotGroup.pivotLabel);
+      state.isRotatingGroup = rotGroup.id;
+      state.rotationCenter = { x: pivot.x, y: pivot.y };
+      state.rotationLastAngle = Math.atan2(world.y - pivot.y, world.x - pivot.x);
+      canvas.style.cursor = 'crosshair';
+      e.preventDefault(); return;
+    }
+  }
+
   if (e.button === 2 && !e.shiftKey) return;
 
   if (state.tool === 'select') {
@@ -1811,6 +1856,11 @@ canvas.addEventListener('mousedown', e => {
     if (e.button === 2 && e.shiftKey && obj) {
       state.selected = state.selected.filter(id => id !== obj.id);
       render(); return;
+    }
+    // En mode exercice : bloquer sélection/drag des membres de figureGroups
+    if (state.exerciseMode && obj) {
+      const isFgMember = state.figureGroups.some(fg => (fg.objectIds || []).includes(obj.id));
+      if (isFgMember) { render(); return; }
     }
     if (obj && isPointLike(obj)) {
       // Ctrl+click: toggle selection
@@ -1916,6 +1966,34 @@ canvas.addEventListener('mousemove', e => {
   if (state.isLasso && state.lassoStart) {
     state.lassoEnd = { cx: pos.x, cy: pos.y };
     render(); return;
+  }
+
+  if (state.isRotatingGroup) {
+    const fg = state.figureGroups.find(g => g.id === state.isRotatingGroup);
+    if (fg && state.rotationCenter) {
+      const angle = Math.atan2(world.y - state.rotationCenter.y, world.x - state.rotationCenter.x);
+      const delta = angle - state.rotationLastAngle;
+      state.rotationLastAngle = angle;
+      const cx = state.rotationCenter.x, cy = state.rotationCenter.y;
+      const movedPtIds = new Set();
+      fg.objectIds.forEach(oid => {
+        const o = state.objects.find(ob => ob.id === oid);
+        if (!o) return;
+        const ptIds = getDefiningPointIds(o);
+        (ptIds.length > 0 ? ptIds : (isPointLike(o) ? [o.id] : [])).forEach(pid => {
+          if (movedPtIds.has(pid)) return;
+          movedPtIds.add(pid);
+          const pt = state.objects.find(ob => ob.id === pid);
+          if (pt) {
+            const dx = pt.x - cx, dy = pt.y - cy;
+            pt.x = cx + dx * Math.cos(delta) - dy * Math.sin(delta);
+            pt.y = cy + dx * Math.sin(delta) + dy * Math.cos(delta);
+          }
+        });
+      });
+      evalAll(); render();
+    }
+    return;
   }
 
   if (state.isDraggingGroup) {
@@ -2028,6 +2106,24 @@ canvas.addEventListener('mousemove', e => {
 
 canvas.addEventListener('mouseup', e => {
   if (state.isPanning) { state.isPanning = false; canvas.style.cursor = (state.tool === 'select' || state.tool === 'lasso') ? 'default' : 'crosshair'; }
+
+  if (state.isRotatingGroup) {
+    const fg = state.figureGroups.find(g => g.id === state.isRotatingGroup);
+    if (fg && state.exerciseMode) {
+      const pivot = state.objects.find(o => o.id === fg.pivotId || o.label === fg.pivotLabel);
+      if (pivot) {
+        const zone = getGroupZoneAt(pivot.x, pivot.y);
+        const zoneId = zone ? zone.id : null;
+        fg.currentZoneId = zoneId;
+        if (state.groupMovedCallback) state.groupMovedCallback(fg.id, zoneId, pivot.x, pivot.y);
+      }
+    }
+    state.isRotatingGroup = null;
+    state.rotationCenter = null;
+    state.rotationLastAngle = null;
+    canvas.style.cursor = 'default';
+    saveUndo(); render(); return;
+  }
   if (state.isDragging) {
     // If the dragged point is a pivot, update figureGroup startX/startY
     if (state.dragTarget) {
