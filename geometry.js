@@ -1958,12 +1958,9 @@ canvas.addEventListener('mouseup', e => {
       if (pivot) {
         const zone = getGroupZoneAt(pivot.x, pivot.y);
         const zoneId = zone ? zone.id : null;
-        // Check tolerance for green
         const dx = pivot.x - (fg.targetX || 0), dy = pivot.y - (fg.targetY || 0);
         const tol = fg.tolerance || 1;
         const inTarget = zoneId != null && fg.targetZoneId != null && zoneId === fg.targetZoneId;
-        const close = Math.hypot(dx, dy) <= tol;
-        // Tolérance de position : si targetX/Y défini on exige proximité, sinon zone suffit
         const hasTarget = fg.targetX != null && fg.targetY != null;
         const close = !hasTarget || Math.hypot(dx, dy) <= tol;
         if (state.exerciseMode) {
