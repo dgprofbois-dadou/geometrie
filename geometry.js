@@ -1987,18 +1987,10 @@ canvas.addEventListener('mouseup', e => {
       if (pivot) {
         const zone = getGroupZoneAt(pivot.x, pivot.y);
         const zoneId = zone ? zone.id : null;
-        const dx = pivot.x - (fg.targetX || 0), dy = pivot.y - (fg.targetY || 0);
-        const tol = fg.tolerance || 1;
         const inTarget = zoneId != null && fg.targetZoneId != null && zoneId === fg.targetZoneId;
-        const hasTarget = fg.targetX != null && fg.targetY != null;
-        const close = !hasTarget || Math.hypot(dx, dy) <= tol;
         if (state.exerciseMode) {
-          if (inTarget && close) {
+          if (inTarget) {
             if (zone) zone.state = 'green';
-            if (state.groupMovedCallback) state.groupMovedCallback(fg.id, zoneId, pivot.x, pivot.y);
-          } else if (inTarget) {
-            // dans la bonne zone mais pas au bon endroit : orange
-            if (zone && zone.state !== 'green') zone.state = 'yellow';
             if (state.groupMovedCallback) state.groupMovedCallback(fg.id, zoneId, pivot.x, pivot.y);
           } else {
             state.zones.forEach(z => { if (z.state !== 'green') z.state = 'active'; });
