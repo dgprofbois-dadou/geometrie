@@ -1903,12 +1903,41 @@ canvas.addEventListener('mousemove', e => {
     }
     // Drag non-point object (segment, circle, polygon, etc.) — move all defining points
     if (obj && state.dragLastWorld) {
+      // Snap based on nearest defining point, not cursor center
+      const ptIds = getDefiningPointIds(obj);
+      let snapRef = world; // fallback: cursor
+      if (ptIds.length > 0) {
+        // Find the defining point closest to the cursor
+        let best = null, bestDist = Infinity;
+        ptIds.forEach(pid => {
+          const pt = getObj(pid);
+          if (pt) {
+            const d = Math.hypot(pt.x - world.x, pt.y - world.y);
+            if (d < bestDist) { bestDist = d; best = pt; }
+          }
+        });
+        if (best) {
+          // Snap that point to grid, derive delta from it
+          const snapped = snapToGrid(best.x + (world.x - state.dragLastWorld.x), best.y + (world.y - state.dragLastWorld.y));
+          const ddx = snapped.x - best.x;
+          const ddy = snapped.y - best.y;
+          if (ddx === 0 && ddy === 0) { render(); return; }
+          state.dragLastWorld = { x: world.x, y: world.y };
+          if (obj.groupId && state.editingGroupId !== obj.groupId) {
+            const movedSet = new Set();
+            getGroupMembers(obj.groupId).forEach(m => moveObjectBy(m, ddx, ddy, movedSet));
+          } else {
+            moveObjectBy(obj, ddx, ddy);
+          }
+          evalAll(); updateAlgebra();
+          render(); return;
+        }
+      }
       const snappedDrag = snapToGrid(world.x, world.y);
       const ddx = snappedDrag.x - state.dragLastWorld.x;
       const ddy = snappedDrag.y - state.dragLastWorld.y;
       if (ddx === 0 && ddy === 0) { render(); return; }
       state.dragLastWorld = { x: snappedDrag.x, y: snappedDrag.y };
-      // If in a group, move all group members
       if (obj.groupId && state.editingGroupId !== obj.groupId) {
         const movedSet = new Set();
         getGroupMembers(obj.groupId).forEach(m => moveObjectBy(m, ddx, ddy, movedSet));
