@@ -694,6 +694,22 @@ function getGroupZoneAt(x, y) {
   return state.zones.find(z => x >= z.x1 && x <= z.x2 && y >= z.y1 && y <= z.y2) || null;
 }
 
+// Returns bounding box {minX,maxX,minY,maxY} of all defining points of a figureGroup
+function getGroupBounds(fg) {
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  fg.objectIds.forEach(oid => {
+    const o = state.objects.find(ob => ob.id === oid);
+    if (!o) return;
+    const ptIds = getDefiningPointIds(o);
+    const pts = ptIds.length > 0 ? ptIds.map(pid => getObj(pid)).filter(Boolean) : (isPointLike(o) ? [o] : []);
+    pts.forEach(pt => {
+      if (pt.x < minX) minX = pt.x; if (pt.x > maxX) maxX = pt.x;
+      if (pt.y < minY) minY = pt.y; if (pt.y > maxY) maxY = pt.y;
+    });
+  });
+  return { minX, maxX, minY, maxY };
+}
+
 function getPaletteArea() {
   // Area above all zones where figures start
   const topY = state.zones.reduce((m, z) => Math.max(m, z.y2), 6) + 1.5;
@@ -1988,9 +2004,25 @@ canvas.addEventListener('mouseup', e => {
         const zone = getGroupZoneAt(pivot.x, pivot.y);
         const zoneId = zone ? zone.id : null;
         const inTarget = zoneId != null && fg.targetZoneId != null && zoneId === fg.targetZoneId;
+        // Check alignment constraint (orthographic projection)
+        let alignOk = true;
+        if (inTarget && fg.alignConstraint && fg.alignConstraint.axis) {
+          const ac = fg.alignConstraint;
+          const refFg = state.figureGroups.find(g => g.id === ac.refGroupId);
+          if (refFg) {
+            const bounds = getGroupBounds(refFg);
+            const tol = ac.tolerance != null ? ac.tolerance : 0.5;
+            if (ac.axis === 'x') alignOk = pivot.x >= bounds.minX - tol && pivot.x <= bounds.maxX + tol;
+            else if (ac.axis === 'y') alignOk = pivot.y >= bounds.minY - tol && pivot.y <= bounds.maxY + tol;
+          }
+        }
         if (state.exerciseMode) {
-          if (inTarget) {
+          if (inTarget && alignOk) {
             if (zone) zone.state = 'green';
+            if (state.groupMovedCallback) state.groupMovedCallback(fg.id, zoneId, pivot.x, pivot.y);
+          } else if (inTarget) {
+            // Bonne zone mais alignement incorrect
+            if (zone && zone.state !== 'green') zone.state = 'yellow';
             if (state.groupMovedCallback) state.groupMovedCallback(fg.id, zoneId, pivot.x, pivot.y);
           } else {
             state.zones.forEach(z => { if (z.state !== 'green') z.state = 'active'; });
@@ -2652,7 +2684,7 @@ const geoApp = {
     render();
   },
 
-  defineFigureGroup(groupId, label, objectIds, pivotLabel, targetZoneId, targetX, targetY, tolerance, startX, startY) {
+  defineFigureGroup(groupId, label, objectIds, pivotLabel, targetZoneId, targetX, targetY, tolerance, startX, startY, alignConstraint) {
     const pivot = state.objects.find(o => o.label === pivotLabel || o.id === pivotLabel);
     // Remove existing group with same id
     state.figureGroups = state.figureGroups.filter(g => g.id !== groupId);
@@ -2665,7 +2697,8 @@ const geoApp = {
       targetX: targetX || 0, targetY: targetY || 0,
       tolerance: tolerance || 1,
       startX: startX != null ? startX : null,
-      startY: startY != null ? startY : null
+      startY: startY != null ? startY : null,
+      alignConstraint: alignConstraint || null
     });
     render();
   },

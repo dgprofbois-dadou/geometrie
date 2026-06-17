@@ -1264,11 +1264,7 @@ function selectQuestion(id) {
       geoApp.hideZones();
     }
     // Afficher les pivots ⊕ des figureGroups dans l'éditeur
-    geoApp.clearFigureGroups();
-    (q.figureGroups || []).forEach(fg => {
-      geoApp.defineFigureGroup(fg.id, fg.label, fg.objectIds, fg.pivotLabel,
-        fg.targetZoneId, fg.targetX, fg.targetY, fg.tolerance, fg.startX, fg.startY);
-    });
+    syncFigureGroupsToCanvas(q);
   }
 }
 
@@ -1448,15 +1444,22 @@ function renderQuestionEditor() {
     saveCurrentGeoState();
     document.getElementById('figure-groups-list').innerHTML = buildFigureGroupsList(q);
     wireFigureGroupDelBtns(q);
+    wireFigureGroupAlignControls(q);
     geoApp.defineZones(activeZoneIds, 8, 6, 0.5);
-    geoApp.defineFigureGroup(fgId, name, sel, pivotLabel, targetZoneId, cx, cy, q.tolerance || 1, startX, startY);
-    render();
+    syncFigureGroupsToCanvas(q);
   });
 
   wireFigureGroupDelBtns(q);
+  wireFigureGroupAlignControls(q);
 
   // Branche les boutons rôle et del du panneau objets de référence
   syncRefObjPanel();
+}
+
+function syncFigureGroupsToCanvas(q) {
+  geoApp.clearFigureGroups();
+  (q.figureGroups || []).forEach(fg => geoApp.defineFigureGroup(fg.id, fg.label, fg.objectIds, fg.pivotLabel, fg.targetZoneId, fg.targetX, fg.targetY, fg.tolerance, fg.startX, fg.startY, fg.alignConstraint));
+  render();
 }
 
 function wireFigureGroupDelBtns(q) {
@@ -1466,11 +1469,40 @@ function wireFigureGroupDelBtns(q) {
       q.figureGroups = (q.figureGroups || []).filter(fg => fg.id !== fgid);
       document.getElementById('figure-groups-list').innerHTML = buildFigureGroupsList(q);
       wireFigureGroupDelBtns(q);
+      wireFigureGroupAlignControls(q);
       saveCurrentGeoState();
-      // Resync pivots visibles sur le canvas
-      geoApp.clearFigureGroups();
-      (q.figureGroups || []).forEach(fg => geoApp.defineFigureGroup(fg.id, fg.label, fg.objectIds, fg.pivotLabel, fg.targetZoneId, fg.targetX, fg.targetY, fg.tolerance, fg.startX, fg.startY));
-      render();
+      syncFigureGroupsToCanvas(q);
+    });
+  });
+
+  document.querySelectorAll('.fg-align-axis').forEach(sel => {
+    sel.addEventListener('change', function() {
+      const fgid = this.dataset.fgid;
+      const fg = (q.figureGroups || []).find(g => g.id === fgid);
+      if (!fg) return;
+      if (!fg.alignConstraint) fg.alignConstraint = {};
+      fg.alignConstraint.axis = this.value;
+      // Rebuild list to show/hide ref+tol controls
+      document.getElementById('figure-groups-list').innerHTML = buildFigureGroupsList(q);
+      wireFigureGroupDelBtns(q);
+      wireFigureGroupAlignControls(q);
+      scheduleSave();
+      syncFigureGroupsToCanvas(q);
+    });
+  });
+}
+
+function wireFigureGroupAlignControls(q) {
+  document.querySelectorAll('.fg-align-ref').forEach(sel => {
+    sel.addEventListener('change', function() {
+      const fg = (q.figureGroups || []).find(g => g.id === this.dataset.fgid);
+      if (fg) { if (!fg.alignConstraint) fg.alignConstraint = {}; fg.alignConstraint.refGroupId = this.value; scheduleSave(); syncFigureGroupsToCanvas(q); }
+    });
+  });
+  document.querySelectorAll('.fg-align-tol').forEach(inp => {
+    inp.addEventListener('input', function() {
+      const fg = (q.figureGroups || []).find(g => g.id === this.dataset.fgid);
+      if (fg) { if (!fg.alignConstraint) fg.alignConstraint = {}; fg.alignConstraint.tolerance = parseFloat(this.value) || 0.5; scheduleSave(); syncFigureGroupsToCanvas(q); }
     });
   });
 }
@@ -1489,14 +1521,36 @@ function hideHint() {
 
 function buildFigureGroupsList(q) {
   if (!q || !q.figureGroups || !q.figureGroups.length) return '<div style="color:var(--text-muted);font-size:10px">Aucun groupe. Sélectionnez des objets puis cliquez "+ Grouper".</div>';
-  return q.figureGroups.map(fg => `
-    <div style="display:flex;align-items:center;gap:6px;padding:4px;border:1px solid var(--border);border-radius:4px;margin-bottom:3px">
-      <span style="color:#89b4fa;font-weight:600">⊕</span>
-      <span style="flex:1">${fg.label}</span>
-      <span style="color:var(--text-muted);font-size:10px">${fg.targetZoneId ? ZONE_LABELS[fg.targetZoneId] : '—'}</span>
-      <button class="tag-btn fg-del-btn" data-fgid="${fg.id}" style="color:var(--danger);padding:1px 5px">✕</button>
-    </div>
-  `).join('');
+  return q.figureGroups.map(fg => {
+    const ac = fg.alignConstraint || {};
+    const otherGroups = (q.figureGroups || []).filter(g => g.id !== fg.id);
+    const refOptions = otherGroups.map(g => `<option value="${g.id}" ${ac.refGroupId === g.id ? 'selected' : ''}>${g.label}</option>`).join('');
+    const axisNone = !ac.axis ? 'selected' : '';
+    const axisX = ac.axis === 'x' ? 'selected' : '';
+    const axisY = ac.axis === 'y' ? 'selected' : '';
+    return `
+    <div style="border:1px solid var(--border);border-radius:4px;margin-bottom:3px;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:6px;padding:4px 6px">
+        <span style="color:#89b4fa;font-weight:600">⊕</span>
+        <span style="flex:1">${fg.label}</span>
+        <span style="color:var(--text-muted);font-size:10px">${fg.targetZoneId ? ZONE_LABELS[fg.targetZoneId] : '—'}</span>
+        <button class="tag-btn fg-del-btn" data-fgid="${fg.id}" style="color:var(--danger);padding:1px 5px">✕</button>
+      </div>
+      <div style="padding:4px 8px 6px;border-top:1px solid var(--border);background:rgba(0,0,0,.15);font-size:10px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+        <span style="color:var(--text-muted)">Alignement :</span>
+        <select class="fg-align-axis" data-fgid="${fg.id}" style="font-size:10px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:3px;padding:1px 3px">
+          <option value="" ${axisNone}>Aucun</option>
+          <option value="x" ${axisX}>Axe X (vertical)</option>
+          <option value="y" ${axisY}>Axe Y (horizontal)</option>
+        </select>
+        <select class="fg-align-ref" data-fgid="${fg.id}" style="font-size:10px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:3px;padding:1px 3px;${ac.axis ? '' : 'display:none'}">
+          <option value="">— Référence —</option>${refOptions}
+        </select>
+        <span style="color:var(--text-muted);${ac.axis ? '' : 'display:none'}">Tol.</span>
+        <input type="number" class="fg-align-tol" data-fgid="${fg.id}" value="${ac.tolerance != null ? ac.tolerance : 0.5}" min="0.1" max="5" step="0.1" style="width:45px;font-size:10px;${ac.axis ? '' : 'display:none'}">
+      </div>
+    </div>`;
+  }).join('');
 }
 
 function buildZoneChecks(q) {
@@ -1689,7 +1743,8 @@ function buildExerciseData() {
         targetZoneId: fg.targetZoneId,
         targetX: fg.targetX, targetY: fg.targetY,
         tolerance: fg.tolerance || q.tolerance || 1,
-        startX: fg.startX, startY: fg.startY
+        startX: fg.startX, startY: fg.startY,
+        alignConstraint: fg.alignConstraint || null
       })),
       // Complete scene state: all objects + their roles
       geoState: objs,
@@ -1850,7 +1905,7 @@ function generateJS(data) {
     // Figures déplaçables
     if (q.figureGroups && q.figureGroups.length > 0) {
       q.figureGroups.forEach(function(fg) {
-        geoApp.defineFigureGroup(fg.id, fg.label, fg.objectIds, fg.pivotLabel, fg.targetZoneId, fg.targetX, fg.targetY, fg.tolerance, fg.startX, fg.startY);
+        geoApp.defineFigureGroup(fg.id, fg.label, fg.objectIds, fg.pivotLabel, fg.targetZoneId, fg.targetX, fg.targetY, fg.tolerance, fg.startX, fg.startY, fg.alignConstraint);
       });
       geoApp.resetAllGroupsToStart();
       geoApp.onGroupMoved(function(groupId, zoneId, x, y) {
