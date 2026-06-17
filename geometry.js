@@ -14,6 +14,7 @@ const state = {
   selected: [],         // selected object ids
   hover: null,          // hovered object id
   tempPoints: [],       // points accumulated for multi-click tools
+  snapCandidate: null,  // {x, y, type:'point'|'midpoint'|'perpendicular'} computed each mousemove
   undoStack: [],
   redoStack: [],
   // viewport
@@ -1251,10 +1252,31 @@ function drawTempPreview() {
   });
 
   // Preview line to mouse
+  // Draw snap indicator
+  if (state.snapCandidate && state.mouseWorld) {
+    const sc = state.snapCandidate;
+    const c = worldToCanvas(sc.x, sc.y);
+    if (sc.type === 'point') {
+      ctx.beginPath(); ctx.arc(c.x, c.y, 8, 0, Math.PI * 2);
+      ctx.strokeStyle = '#a6e3a1'; ctx.lineWidth = 2; ctx.stroke();
+    } else if (sc.type === 'midpoint') {
+      ctx.beginPath();
+      ctx.moveTo(c.x - 7, c.y); ctx.lineTo(c.x + 7, c.y);
+      ctx.moveTo(c.x, c.y - 7); ctx.lineTo(c.x, c.y + 7);
+      ctx.strokeStyle = '#89dceb'; ctx.lineWidth = 2; ctx.stroke();
+    } else if (sc.type === 'perpendicular') {
+      ctx.beginPath();
+      ctx.moveTo(c.x - 6, c.y - 6); ctx.lineTo(c.x + 6, c.y + 6);
+      ctx.moveTo(c.x + 6, c.y - 6); ctx.lineTo(c.x - 6, c.y + 6);
+      ctx.strokeStyle = '#f9e2af'; ctx.lineWidth = 2; ctx.stroke();
+    }
+  }
+
   if (state.mouseWorld && pts.length >= 1) {
     const last = pts[pts.length - 1];
     const c1 = worldToCanvas(last.x, last.y);
-    const c2 = worldToCanvas(state.mouseWorld.x, state.mouseWorld.y);
+    const snapW = state.snapCandidate || state.mouseWorld;
+    const c2 = worldToCanvas(snapW.x, snapW.y);
     ctx.beginPath(); ctx.moveTo(c1.x, c1.y); ctx.lineTo(c2.x, c2.y);
     ctx.strokeStyle = 'rgba(255,220,100,0.5)';
     ctx.lineWidth = 1.5; ctx.setLineDash([5, 4]); ctx.stroke(); ctx.setLineDash([]);
@@ -1301,8 +1323,8 @@ function drawTempPreview() {
 
 const toolHandlers = {
   point(wx, wy) {
-    const snapped = snapToGrid(wx, wy);
-    makePoint(snapped.x, snapped.y);
+    // wx,wy already snapped (grid or snap candidate) from mousedown handler
+    makePoint(wx, wy);
     render();
   },
   'point-on-object'(wx, wy) {
@@ -1418,8 +1440,8 @@ const toolHandlers = {
   },
 
   polygon(wx, wy) {
-    const snapped = snapToGrid(wx, wy);
     const existing = findNearPoint(wx, wy);
+    const snapped = existing ? { x: existing.x, y: existing.y } : (findSnapCandidate(wx, wy) || snapToGrid(wx, wy));
     // Close polygon on click near first point
     if (state.tempPoints.length >= 3) {
       const first = state.tempPoints[0];
@@ -1641,6 +1663,52 @@ function findNearPoint(wx, wy) {
   return null;
 }
 
+// Returns the best snap candidate near (wx,wy): existing point > midpoint > perpendicular foot
+function findSnapCandidate(wx, wy) {
+  const POINT_PX = 14, MID_PX = 12, PERP_PX = 10;
+  const cPos = worldToCanvas(wx, wy);
+  let best = null, bestDist = Infinity;
+
+  // 1. Existing visible points
+  for (const o of state.objects) {
+    if (!isPointLike(o) || !o.visible) continue;
+    const c = worldToCanvas(o.x, o.y);
+    const d = Math.hypot(cPos.x - c.x, cPos.y - c.y);
+    if (d < POINT_PX && d < bestDist) { bestDist = d; best = { x: o.x, y: o.y, type: 'point' }; }
+  }
+  if (best) return best;
+
+  // 2. Midpoints of visible segments
+  for (const o of state.objects) {
+    if (o.type !== 'segment' || !o.visible) continue;
+    const p1 = getPoint(o.p1id), p2 = getPoint(o.p2id);
+    if (!p1 || !p2) continue;
+    const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
+    const c = worldToCanvas(mx, my);
+    const d = Math.hypot(cPos.x - c.x, cPos.y - c.y);
+    if (d < MID_PX && d < bestDist) { bestDist = d; best = { x: mx, y: my, type: 'midpoint' }; }
+  }
+  if (best) return best;
+
+  // 3. Perpendicular foot on visible lines/segments/rays
+  for (const o of state.objects) {
+    if (!isLineLike(o) || !o.visible) continue;
+    const p1 = getPoint(o.p1id), p2 = getPoint(o.p2id);
+    if (!p1 || !p2) continue;
+    const dx = p2.x - p1.x, dy = p2.y - p1.y;
+    const len2 = dx * dx + dy * dy;
+    if (len2 < 1e-10) continue;
+    const t = ((wx - p1.x) * dx + (wy - p1.y) * dy) / len2;
+    // For segments, clamp to [0,1]; for lines/rays keep unbounded
+    const tc = (o.type === 'segment') ? Math.max(0, Math.min(1, t)) : t;
+    const fx = p1.x + tc * dx, fy = p1.y + tc * dy;
+    const c = worldToCanvas(fx, fy);
+    const d = Math.hypot(cPos.x - c.x, cPos.y - c.y);
+    if (d < PERP_PX && d < bestDist) { bestDist = d; best = { x: fx, y: fy, type: 'perpendicular' }; }
+  }
+  return best || null;
+}
+
 function twoPointTool(type) {
   return function(wx, wy) {
     twoPointToolAction(wx, wy, (a, b) => {
@@ -1650,8 +1718,8 @@ function twoPointTool(type) {
 }
 
 function twoPointToolAction(wx, wy, cb, immediateThird) {
-  const snapped = snapToGrid(wx, wy);
   const existing = findNearPoint(wx, wy);
+  const snapped = existing ? { x: existing.x, y: existing.y } : (findSnapCandidate(wx, wy) || snapToGrid(wx, wy));
 
   if (!state.tempPoints.length) {
     const pt = existing || makePoint(snapped.x, snapped.y);
@@ -1660,7 +1728,8 @@ function twoPointToolAction(wx, wy, cb, immediateThird) {
     render();
   } else {
     const pt = existing || makePoint(snapped.x, snapped.y);
-    const a = getObj(state.tempPoints[0].id), b = pt;
+    const a = getObj(state.tempPoints[0].id);
+    const b = pt;
     cb(a, b);
     state.tempPoints = [];
     render();
@@ -1669,8 +1738,8 @@ function twoPointToolAction(wx, wy, cb, immediateThird) {
 
 function threePointToolAction(wx, wy, cb, statusMsgs) {
   const msgs = statusMsgs || ['1er point', '2ème point', '3ème point'];
-  const snapped = snapToGrid(wx, wy);
   const existing = findNearPoint(wx, wy);
+  const snapped = existing ? { x: existing.x, y: existing.y } : (findSnapCandidate(wx, wy) || snapToGrid(wx, wy));
   const pt = existing || makePoint(snapped.x, snapped.y);
   state.tempPoints.push({ id: pt.id, x: pt.x, y: pt.y });
 
@@ -1943,8 +2012,9 @@ canvas.addEventListener('mousedown', e => {
     render(); return;
   }
 
-  const snapped = snapToGrid(world.x, world.y);
+  const snapped = state.snapCandidate || snapToGrid(world.x, world.y);
   state.rawClickWorld = world; // raw coords for hit-testing in tools
+  state.snapCandidate = null;
   const handler = toolHandlers[state.tool];
   if (handler) handler(snapped.x, snapped.y);
 });
@@ -2070,7 +2140,14 @@ canvas.addEventListener('mousemove', e => {
   document.getElementById('coords-display').textContent =
     `x = ${world.x.toFixed(2)}, y = ${world.y.toFixed(2)}`;
 
-  if (state.tempPoints.length) render();
+  // Compute snap candidate when a drawing tool is active
+  const isDrawingTool = state.tool !== 'select' && state.tool !== 'lasso' && state.tool !== 'pan';
+  if (isDrawingTool && state.snapUnit > 0) {
+    state.snapCandidate = findSnapCandidate(world.x, world.y);
+  } else {
+    state.snapCandidate = null;
+  }
+  if (state.tempPoints.length || state.snapCandidate) render();
 });
 
 canvas.addEventListener('mouseup', e => {
