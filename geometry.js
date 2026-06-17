@@ -997,10 +997,19 @@ function drawPoint(obj) {
   ctx.fill();
 
   // Label
-  ctx.fillStyle = sel ? 'rgba(255,220,50,1)' : objStroke(obj);
-  ctx.font = 'bold 12px serif';
-  ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
-  ctx.fillText(obj.label, c.x + 7, c.y - 4);
+  if (obj.showLabel !== false && obj.label) {
+    const mode = obj.labelMode || 'name';
+    let labelText = '';
+    if (mode === 'name') labelText = obj.label;
+    else if (mode === 'value') labelText = `(${obj.x != null ? obj.x.toFixed(1) : ''},${obj.y != null ? obj.y.toFixed(1) : ''})`;
+    else if (mode === 'name+value') labelText = `${obj.label}(${obj.x != null ? obj.x.toFixed(1) : ''},${obj.y != null ? obj.y.toFixed(1) : ''})`;
+    if (labelText) {
+      ctx.fillStyle = sel ? 'rgba(255,220,50,1)' : objStroke(obj);
+      ctx.font = 'bold 12px serif';
+      ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+      ctx.fillText(labelText, c.x + 7, c.y - 4);
+    }
+  }
 }
 
 function drawSegment(obj) {
@@ -2930,7 +2939,7 @@ const geoApp = {
 
   getAllObjects() {
     return state.objects.map(obj => {
-      const info = { id: obj.id, label: obj.label, type: obj.type, visible: obj.visible, fixed: !!obj.fixed, dashed: !!obj.dashed, _role: obj._role };
+      const info = { id: obj.id, label: obj.label, type: obj.type, visible: obj.visible, fixed: !!obj.fixed, dashed: !!obj.dashed, _role: obj._role, showLabel: obj.showLabel !== false, labelMode: obj.labelMode || 'name' };
       if (isPointLike(obj)) { info.x = obj.x; info.y = obj.y; }
       if (obj.type === 'segment' || obj.type === 'line' || obj.type === 'ray' || obj.type === 'vector') {
         const p1 = getPoint(obj.p1id), p2 = getPoint(obj.p2id);
