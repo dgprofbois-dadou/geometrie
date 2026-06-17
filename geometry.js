@@ -44,8 +44,9 @@ const state = {
   groupMovedCallback: null,
   // label counter
   labelCounters: { point: 0, line: 0, circle: 0, polygon: 0, text: 0, angle: 0, measure: 0 },
-  editingGroupId: null,  // group currently being edited at detail level
-  exerciseMode: false    // true only during exercise playback (controls zone feedback)
+  editingGroupId: null,        // type:group currently being edited
+  editingFigureGroupId: null,  // figureGroup currently being edited individually
+  exerciseMode: false          // true only during exercise playback (controls zone feedback)
 };
 
 let nextId = 1;
@@ -807,6 +808,27 @@ function render() {
       }
     });
     ctx.restore();
+  }
+  // Draw figureGroup editing mode indicator
+  if (state.editingFigureGroupId) {
+    const fg = state.figureGroups.find(g => g.id === state.editingFigureGroupId);
+    if (fg) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(100,220,255,0.6)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 3]);
+      fg.objectIds.forEach(oid => {
+        const o = state.objects.find(ob => ob.id === oid);
+        if (!o) return;
+        getDefiningPointIds(o).forEach(pid => {
+          const pt = getObj(pid);
+          if (pt) { const c = worldToCanvas(pt.x, pt.y); ctx.beginPath(); ctx.arc(c.x, c.y, 12, 0, Math.PI*2); ctx.stroke(); }
+        });
+        if (isPointLike(o)) { const c = worldToCanvas(o.x, o.y); ctx.beginPath(); ctx.arc(c.x, c.y, 12, 0, Math.PI*2); ctx.stroke(); }
+      });
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
   }
 
   drawTempPreview();
@@ -1715,6 +1737,7 @@ function enterGroupEdit(groupId) {
 
 function exitGroupEdit() {
   state.editingGroupId = null;
+  state.editingFigureGroupId = null;
   setStatus('');
   render();
 }
@@ -1814,6 +1837,13 @@ canvas.addEventListener('mousedown', e => {
         }
         render(); return;
       }
+      // FigureGroup member click: select group unless in editing mode
+      const memberFg = state.figureGroups.find(g => g.objectIds.includes(obj.id));
+      if (memberFg && state.editingFigureGroupId !== memberFg.id) {
+        // Not editing this group → clic sélectionne le pivot (comme un groupe entier)
+        state.selected = [];
+        render(); return;
+      }
       // Start dragging non-point object (moves all its defining points)
       const ptIds = getDefiningPointIds(obj);
       if (ptIds.length > 0 || obj.type === 'text') {
@@ -1839,6 +1869,8 @@ canvas.addEventListener('mousedown', e => {
       canvas.style.cursor = 'crosshair';
       render(); return;
     }
+    // Click on empty canvas: exit figureGroup edit mode
+    if (state.editingFigureGroupId) { exitGroupEdit(); return; }
     // Start pan with left button if nothing hit
     state.isPanning = true;
     state.panStart = { cx: pos.x, cy: pos.y, ox: state.ox, oy: state.oy };
@@ -2109,11 +2141,31 @@ canvas.addEventListener('contextmenu', e => e.preventDefault());
 // Double-click to finish polygon
 canvas.addEventListener('dblclick', e => {
   if (state.tool === 'polygon' && state.tempPoints.length >= 3) finishPolygon();
-  // Enter group edit mode on double-click of selected group
-  if (state.tool === 'select' && state.selected.length === 1) {
-    const selObj = getObj(state.selected[0]);
-    if (selObj && selObj.type === 'group') {
-      enterGroupEdit(selObj.id);
+  if (state.tool === 'select') {
+    const pos = getCanvasPos(e);
+    // Enter group edit mode on double-click of a selected group object
+    if (state.selected.length === 1) {
+      const selObj = getObj(state.selected[0]);
+      if (selObj && selObj.type === 'group') { enterGroupEdit(selObj.id); return; }
+    }
+    // Double-click on member of figureGroup → enter figureGroup edit mode
+    const obj = objectAtCanvas(pos.x, pos.y);
+    if (obj) {
+      const fg = state.figureGroups.find(g => g.objectIds.includes(obj.id));
+      if (fg && state.editingFigureGroupId !== fg.id) {
+        state.editingFigureGroupId = fg.id;
+        setStatus('Mode édition figure — cliquez un objet pour le configurer — Échap pour quitter');
+        state.selected = [obj.id];
+        showProperties(obj);
+        render(); return;
+      }
+      // Also handle type:group
+      if (obj.groupId && state.editingGroupId !== obj.groupId) {
+        enterGroupEdit(obj.groupId);
+        state.selected = [obj.id];
+        showProperties(obj);
+        render(); return;
+      }
     }
   }
 });
@@ -2142,7 +2194,7 @@ document.addEventListener('keydown', e => {
       if (state.selected.length) { state.selected.forEach(deleteObject); state.selected = []; }
       break;
     case 'Escape':
-      if (state.editingGroupId) { exitGroupEdit(); break; }
+      if (state.editingGroupId || state.editingFigureGroupId) { exitGroupEdit(); break; }
       state.tempPoints = []; state.selected = []; hideProperties(); setTool('select'); render(); break;
   }
 });
