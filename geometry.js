@@ -2010,10 +2010,19 @@ canvas.addEventListener('mouseup', e => {
           const ac = fg.alignConstraint;
           const refFg = state.figureGroups.find(g => g.id === ac.refGroupId);
           if (refFg) {
-            const bounds = getGroupBounds(refFg);
+            const refBounds = getGroupBounds(refFg);
+            const mobBounds = getGroupBounds(fg);
             const tol = ac.tolerance != null ? ac.tolerance : 0.5;
-            if (ac.axis === 'x') alignOk = pivot.x >= bounds.minX - tol && pivot.x <= bounds.maxX + tol;
-            else if (ac.axis === 'y') alignOk = pivot.y >= bounds.minY - tol && pivot.y <= bounds.maxY + tol;
+            if (ac.axis === 'x') {
+              // Même colonne : les bords gauche ET droit de la figure mobile doivent coïncider
+              // avec ceux de la référence (à tol près)
+              alignOk = Math.abs(mobBounds.minX - refBounds.minX) <= tol
+                     && Math.abs(mobBounds.maxX - refBounds.maxX) <= tol;
+            } else if (ac.axis === 'y') {
+              // Même ligne : les bords haut ET bas doivent coïncider
+              alignOk = Math.abs(mobBounds.minY - refBounds.minY) <= tol
+                     && Math.abs(mobBounds.maxY - refBounds.maxY) <= tol;
+            }
           }
         }
         if (state.exerciseMode) {
