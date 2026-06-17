@@ -1981,6 +1981,22 @@ function generateJS(data) {
     // ── Charger le geoState complet (tous les objets dessinés par le prof) ──
     if (q.geoState && q.geoState.length > 0) {
       var givenIdSet = new Set(q.givenIds || []);
+      // Étendre givenIdSet : les points constitutifs d'un objet "donné" sont aussi donnés
+      // (un segment donné implique que ses points sont visibles)
+      var givenChanged = true;
+      while (givenChanged) {
+        givenChanged = false;
+        q.geoState.forEach(function(o) {
+          var oIsGiven = o._role === 'given' || (o._role === undefined && givenIdSet.has(o.id));
+          if (!oIsGiven) return;
+          [o.p1id, o.p2id, o.centerId, o.pointId, o.radiusPointId].forEach(function(pid) {
+            if (pid != null && !givenIdSet.has(pid)) { givenIdSet.add(pid); givenChanged = true; }
+          });
+          if (Array.isArray(o.pointIds)) o.pointIds.forEach(function(pid) {
+            if (!givenIdSet.has(pid)) { givenIdSet.add(pid); givenChanged = true; }
+          });
+        });
+      }
       // Séparer groupes mobiles (palette) et fixes (restent en place)
       var mobileFgs = (q.figureGroups || []).filter(function(fg) { return fg.mobile !== false; });
       var fixedFgs  = (q.figureGroups || []).filter(function(fg) { return fg.mobile === false; });
