@@ -2684,9 +2684,8 @@ const geoApp = {
     render();
   },
 
-  defineFigureGroup(groupId, label, objectIds, pivotLabel, targetZoneId, targetX, targetY, tolerance, startX, startY, alignConstraint) {
+  defineFigureGroup(groupId, label, objectIds, pivotLabel, targetZoneId, targetX, targetY, tolerance, startX, startY, alignConstraint, mobile) {
     const pivot = state.objects.find(o => o.label === pivotLabel || o.id === pivotLabel);
-    // Remove existing group with same id
     state.figureGroups = state.figureGroups.filter(g => g.id !== groupId);
     state.figureGroups.push({
       id: groupId, label: label || groupId,
@@ -2698,7 +2697,8 @@ const geoApp = {
       tolerance: tolerance || 1,
       startX: startX != null ? startX : null,
       startY: startY != null ? startY : null,
-      alignConstraint: alignConstraint || null
+      alignConstraint: alignConstraint || null,
+      mobile: mobile !== false  // default true
     });
     render();
   },
@@ -2749,27 +2749,26 @@ const geoApp = {
   },
 
   resetAllGroupsToStart() {
-    const n = state.figureGroups.length;
-    if (n === 0) { render(); return; }
+    const mobileFgs = state.figureGroups.filter(fg => fg.mobile !== false);
+    const n = mobileFgs.length;
 
-    // Palette area: above the topmost zone
-    const topZoneY2 = state.zones.reduce((m, z) => Math.max(m, z.y2), 5);
-    const paletteY = topZoneY2 + 3;          // vertical center of palette row
-    const totalW = state.zones.reduce((m, z) => Math.max(m, z.x2) - Math.min(0, z.x1), 20);
-    const slotW  = Math.max(4, totalW / (n + 1));
+    if (n > 0) {
+      // Palette area: above the topmost zone
+      const topZoneY2 = state.zones.reduce((m, z) => Math.max(m, z.y2), 5);
+      const paletteY = topZoneY2 + 3;
+      const totalW = state.zones.reduce((m, z) => Math.max(m, z.x2) - Math.min(0, z.x1), 20);
+      const slotW  = Math.max(4, totalW / (n + 1));
+      const indices = Array.from({ length: n }, (_, i) => i).sort(() => Math.random() - 0.5);
+      const leftX = -(n - 1) * slotW / 2;
 
-    // Shuffle groups for random order
-    const indices = Array.from({ length: n }, (_, i) => i).sort(() => Math.random() - 0.5);
-    const leftX = -(n - 1) * slotW / 2;
-
-    state.figureGroups.forEach((fg, i) => {
-      const slot = indices[i];
-      // Slight random jitter within slot (±30% of slotW)
-      const jitter = (Math.random() - 0.5) * slotW * 0.4;
-      const tx = leftX + slot * slotW + jitter;
-      const ty = paletteY + (Math.random() - 0.5) * 1.5;
-      this.resetGroupToStart(fg.id, tx, ty);
-    });
+      mobileFgs.forEach((fg, i) => {
+        const slot = indices[i];
+        const jitter = (Math.random() - 0.5) * slotW * 0.4;
+        const tx = leftX + slot * slotW + jitter;
+        const ty = paletteY + (Math.random() - 0.5) * 1.5;
+        this.resetGroupToStart(fg.id, tx, ty);
+      });
+    }
 
     // Reset zone states
     state.zones.forEach(z => { z.state = 'active'; });

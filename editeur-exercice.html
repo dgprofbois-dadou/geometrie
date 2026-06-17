@@ -1458,34 +1458,44 @@ function renderQuestionEditor() {
 
 function syncFigureGroupsToCanvas(q) {
   geoApp.clearFigureGroups();
-  (q.figureGroups || []).forEach(fg => geoApp.defineFigureGroup(fg.id, fg.label, fg.objectIds, fg.pivotLabel, fg.targetZoneId, fg.targetX, fg.targetY, fg.tolerance, fg.startX, fg.startY, fg.alignConstraint));
+  (q.figureGroups || []).forEach(fg => geoApp.defineFigureGroup(fg.id, fg.label, fg.objectIds, fg.pivotLabel, fg.targetZoneId, fg.targetX, fg.targetY, fg.tolerance, fg.startX, fg.startY, fg.alignConstraint, fg.mobile));
   render();
+}
+
+function refreshFigureGroupsList(q) {
+  document.getElementById('figure-groups-list').innerHTML = buildFigureGroupsList(q);
+  wireFigureGroupDelBtns(q);
+  wireFigureGroupAlignControls(q);
 }
 
 function wireFigureGroupDelBtns(q) {
   document.querySelectorAll('.fg-del-btn').forEach(btn => {
     btn.addEventListener('click', function() {
-      const fgid = this.dataset.fgid;
-      q.figureGroups = (q.figureGroups || []).filter(fg => fg.id !== fgid);
-      document.getElementById('figure-groups-list').innerHTML = buildFigureGroupsList(q);
-      wireFigureGroupDelBtns(q);
-      wireFigureGroupAlignControls(q);
+      q.figureGroups = (q.figureGroups || []).filter(fg => fg.id !== this.dataset.fgid);
+      refreshFigureGroupsList(q);
       saveCurrentGeoState();
+      syncFigureGroupsToCanvas(q);
+    });
+  });
+
+  document.querySelectorAll('.fg-mode-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+      const fg = (q.figureGroups || []).find(g => g.id === this.dataset.fgid);
+      if (!fg) return;
+      fg.mobile = fg.mobile === false ? true : false; // toggle
+      refreshFigureGroupsList(q);
+      scheduleSave();
       syncFigureGroupsToCanvas(q);
     });
   });
 
   document.querySelectorAll('.fg-align-axis').forEach(sel => {
     sel.addEventListener('change', function() {
-      const fgid = this.dataset.fgid;
-      const fg = (q.figureGroups || []).find(g => g.id === fgid);
+      const fg = (q.figureGroups || []).find(g => g.id === this.dataset.fgid);
       if (!fg) return;
       if (!fg.alignConstraint) fg.alignConstraint = {};
       fg.alignConstraint.axis = this.value;
-      // Rebuild list to show/hide ref+tol controls
-      document.getElementById('figure-groups-list').innerHTML = buildFigureGroupsList(q);
-      wireFigureGroupDelBtns(q);
-      wireFigureGroupAlignControls(q);
+      refreshFigureGroupsList(q);
       scheduleSave();
       syncFigureGroupsToCanvas(q);
     });
@@ -1523,32 +1533,37 @@ function buildFigureGroupsList(q) {
   if (!q || !q.figureGroups || !q.figureGroups.length) return '<div style="color:var(--text-muted);font-size:10px">Aucun groupe. Sélectionnez des objets puis cliquez "+ Grouper".</div>';
   return q.figureGroups.map(fg => {
     const ac = fg.alignConstraint || {};
-    const otherGroups = (q.figureGroups || []).filter(g => g.id !== fg.id);
-    const refOptions = otherGroups.map(g => `<option value="${g.id}" ${ac.refGroupId === g.id ? 'selected' : ''}>${g.label}</option>`).join('');
+    const isMobile = fg.mobile !== false; // default mobile=true
+    const allOtherGroups = (q.figureGroups || []).filter(g => g.id !== fg.id);
+    const refOptions = allOtherGroups.map(g => `<option value="${g.id}" ${ac.refGroupId === g.id ? 'selected' : ''}>${g.label}${g.mobile === false ? ' (fixe)' : ''}</option>`).join('');
     const axisNone = !ac.axis ? 'selected' : '';
     const axisX = ac.axis === 'x' ? 'selected' : '';
     const axisY = ac.axis === 'y' ? 'selected' : '';
+    const mobileColor = isMobile ? '#89b4fa' : '#a6e3a1';
+    const mobileLabel = isMobile ? 'Mobile (palette)' : 'Fixe (en place)';
     return `
     <div style="border:1px solid var(--border);border-radius:4px;margin-bottom:3px;overflow:hidden">
       <div style="display:flex;align-items:center;gap:6px;padding:4px 6px">
-        <span style="color:#89b4fa;font-weight:600">⊕</span>
+        <span style="color:${mobileColor};font-weight:600">⊕</span>
         <span style="flex:1">${fg.label}</span>
+        <button class="tag-btn fg-mode-btn" data-fgid="${fg.id}" title="Cliquer pour basculer Fixe/Mobile"
+          style="font-size:9px;padding:1px 5px;background:${isMobile ? 'rgba(137,180,250,.15)' : 'rgba(166,227,161,.15)'};border:1px solid ${mobileColor};color:${mobileColor};border-radius:3px">${mobileLabel}</button>
         <span style="color:var(--text-muted);font-size:10px">${fg.targetZoneId ? ZONE_LABELS[fg.targetZoneId] : '—'}</span>
         <button class="tag-btn fg-del-btn" data-fgid="${fg.id}" style="color:var(--danger);padding:1px 5px">✕</button>
       </div>
-      <div style="padding:4px 8px 6px;border-top:1px solid var(--border);background:rgba(0,0,0,.15);font-size:10px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+      ${isMobile ? `<div style="padding:4px 8px 6px;border-top:1px solid var(--border);background:rgba(0,0,0,.15);font-size:10px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">
         <span style="color:var(--text-muted)">Alignement :</span>
         <select class="fg-align-axis" data-fgid="${fg.id}" style="font-size:10px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:3px;padding:1px 3px">
           <option value="" ${axisNone}>Aucun</option>
-          <option value="x" ${axisX}>Axe X (vertical)</option>
-          <option value="y" ${axisY}>Axe Y (horizontal)</option>
+          <option value="x" ${axisX}>Même colonne (X)</option>
+          <option value="y" ${axisY}>Même ligne (Y)</option>
         </select>
         <select class="fg-align-ref" data-fgid="${fg.id}" style="font-size:10px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:3px;padding:1px 3px;${ac.axis ? '' : 'display:none'}">
           <option value="">— Référence —</option>${refOptions}
         </select>
         <span style="color:var(--text-muted);${ac.axis ? '' : 'display:none'}">Tol.</span>
-        <input type="number" class="fg-align-tol" data-fgid="${fg.id}" value="${ac.tolerance != null ? ac.tolerance : 0.5}" min="0.1" max="5" step="0.1" style="width:45px;font-size:10px;${ac.axis ? '' : 'display:none'}">
-      </div>
+        <input type="number" class="fg-align-tol" data-fgid="${fg.id}" value="${ac.tolerance != null ? ac.tolerance : 0.5}" min="0.1" max="10" step="0.1" style="width:45px;font-size:10px;${ac.axis ? '' : 'display:none'}">
+      </div>` : ''}
     </div>`;
   }).join('');
 }
@@ -1744,7 +1759,8 @@ function buildExerciseData() {
         targetX: fg.targetX, targetY: fg.targetY,
         tolerance: fg.tolerance || q.tolerance || 1,
         startX: fg.startX, startY: fg.startY,
-        alignConstraint: fg.alignConstraint || null
+        alignConstraint: fg.alignConstraint || null,
+        mobile: fg.mobile !== false
       })),
       // Complete scene state: all objects + their roles
       geoState: objs,
@@ -1831,9 +1847,18 @@ function generateJS(data) {
     // ── Charger le geoState complet (tous les objets dessinés par le prof) ──
     if (q.geoState && q.geoState.length > 0) {
       var givenIdSet = new Set(q.givenIds || []);
-      var fgObjIdSet = new Set(q.figureGroupObjIds || []);
-      // Inclure les pivots (points __fg_pivot_*) dans le set DnD pour qu'ils soient visibles
-      if (q.figureGroups) q.figureGroups.forEach(function(fg) {
+      // Séparer groupes mobiles (palette) et fixes (restent en place)
+      var mobileFgs = (q.figureGroups || []).filter(function(fg) { return fg.mobile !== false; });
+      var fixedFgs  = (q.figureGroups || []).filter(function(fg) { return fg.mobile === false; });
+      var fgObjIdSet = new Set((q.figureGroupObjIds || []).filter(function(id) {
+        // Garder uniquement les objets des groupes mobiles dans fgObjIdSet
+        return mobileFgs.some(function(fg) { return (fg.objectIds || []).includes(id); });
+      }));
+      var fixedFgObjIdSet = new Set();
+      fixedFgs.forEach(function(fg) { (fg.objectIds || []).forEach(function(id) { fixedFgObjIdSet.add(id); }); });
+
+      // Inclure les pivots mobiles (points __fg_pivot_*) dans le set DnD
+      mobileFgs.forEach(function(fg) {
         var pivot = q.geoState.find(function(o) { return o.label === fg.pivotLabel; });
         if (pivot) fgObjIdSet.add(pivot.id);
       });
@@ -1865,25 +1890,36 @@ function generateJS(data) {
         });
       }
 
-      // Set des pivots (drag handles visibles)
+      // Set des pivots mobiles uniquement (drag handles)
       var pivotIds = new Set();
-      if (q.figureGroups) q.figureGroups.forEach(function(fg) {
+      mobileFgs.forEach(function(fg) {
         var pivot = q.geoState.find(function(o) { return o.label === fg.pivotLabel; });
         if (pivot) pivotIds.add(pivot.id);
       });
+      // Pivots fixes : on les ignore (pas de handle visible)
+      var fixedPivotIds = new Set();
+      fixedFgs.forEach(function(fg) {
+        var pivot = q.geoState.find(function(o) { return o.label === fg.pivotLabel; });
+        if (pivot) fixedPivotIds.add(pivot.id);
+      });
 
       // Clone : fixe les "donnés", masque les "à tracer" hors DnD,
-      // fixe les membres DnD (sauf pivots) pour qu'ils ne soient déplaçables
-      // qu'ensemble via le pivot ⊕
+      // fixe les membres DnD (sauf pivots mobiles) pour qu'ils ne bougent que via le pivot
+      // Les groupes fixes : membres visibles + fixes, pas de pivot visible
       var stateToLoad = q.geoState.map(function(o) {
         var clone = JSON.parse(JSON.stringify(o));
-        if (givenIdSet.has(o.id)) {
+        if (fixedPivotIds.has(o.id)) {
+          clone.visible = false; // pivot groupe fixe : caché
+          clone.fixed = true;
+        } else if (fixedFgObjIdSet.has(o.id)) {
+          clone.fixed = true;   // membres groupe fixe : visibles et immobiles
+        } else if (givenIdSet.has(o.id)) {
           clone.fixed = true;
         } else if (pivotIds.has(o.id)) {
-          clone.fixed = false;  // pivot : déplaçable (drag handle)
+          clone.fixed = false;  // pivot mobile : déplaçable (drag handle)
           clone.visible = false; // invisible mais actif
         } else if (fgObjIdSet.has(o.id)) {
-          clone.fixed = true;   // membres DnD : fixés, ne bougent que via le pivot
+          clone.fixed = true;   // membres groupe mobile : fixés, bougent via pivot
         } else {
           clone.visible = false; // "à tracer" hors DnD : caché
         }
@@ -1905,7 +1941,7 @@ function generateJS(data) {
     // Figures déplaçables
     if (q.figureGroups && q.figureGroups.length > 0) {
       q.figureGroups.forEach(function(fg) {
-        geoApp.defineFigureGroup(fg.id, fg.label, fg.objectIds, fg.pivotLabel, fg.targetZoneId, fg.targetX, fg.targetY, fg.tolerance, fg.startX, fg.startY, fg.alignConstraint);
+        geoApp.defineFigureGroup(fg.id, fg.label, fg.objectIds, fg.pivotLabel, fg.targetZoneId, fg.targetX, fg.targetY, fg.tolerance, fg.startX, fg.startY, fg.alignConstraint, fg.mobile);
       });
       geoApp.resetAllGroupsToStart();
       geoApp.onGroupMoved(function(groupId, zoneId, x, y) {
