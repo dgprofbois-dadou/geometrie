@@ -1736,7 +1736,7 @@ function buildExerciseData() {
       const p1 = objs.find(p => p.id === o.p1id);
       const p2 = objs.find(p => p.id === o.p2id);
       if (!p1 || !p2) return null;
-      return { label: o.label, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
+      return { label: o.label, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y, dashed: !!o.dashed };
     }).filter(Boolean);
 
     // Full geoState for direct replay + role annotations
@@ -2028,9 +2028,16 @@ function generateJS(data) {
       var fwd = dist2d(best.p1.x,best.p1.y,ref.x1,ref.y1) <= tol && dist2d(best.p2.x,best.p2.y,ref.x2,ref.y2) <= tol;
       var rev = dist2d(best.p1.x,best.p1.y,ref.x2,ref.y2) <= tol && dist2d(best.p2.x,best.p2.y,ref.x1,ref.y1) <= tol;
       if (fwd || rev) {
-        geoApp.setColor(best.label, 166, 227, 161); // vert
-        gained += ppc;
-        usedStudentSegs[best.label] = true;
+        // Vérifier aussi le style de trait (plein vs pointillé)
+        var studentObj = geoApp.getAllObjects().find(function(o) { return o.label === best.label; });
+        var styleOk = ref.dashed === undefined || !studentObj || (!!studentObj.dashed === !!ref.dashed);
+        if (styleOk) {
+          geoApp.setColor(best.label, 166, 227, 161); // vert
+          gained += ppc;
+          usedStudentSegs[best.label] = true;
+        } else {
+          geoApp.setColor(best.label, 250, 179, 135); // orange : position ok, style incorrect
+        }
       } else {
         geoApp.setColor(best.label, 243, 139, 168); // rouge
       }
@@ -2318,12 +2325,12 @@ document.getElementById('op-role-expected').addEventListener('click', () => {
 });
 document.getElementById('op-ls-solid').addEventListener('click', () => {
   const obj = getSelectedObj(); if (!obj) return;
-  obj.lineStyle = 1;
+  obj.lineStyle = 1; obj.dashed = false;
   showObjProps(obj); render(); syncRefObjPanel(); scheduleSave();
 });
 document.getElementById('op-ls-dashed').addEventListener('click', () => {
   const obj = getSelectedObj(); if (!obj) return;
-  obj.lineStyle = 3;
+  obj.lineStyle = 3; obj.dashed = true;
   showObjProps(obj); render(); syncRefObjPanel(); scheduleSave();
 });
 document.getElementById('op-dash-len').addEventListener('input', e => {

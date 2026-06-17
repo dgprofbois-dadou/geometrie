@@ -919,6 +919,19 @@ function objStroke(obj, alpha = 1) {
   return adjustAlpha(obj.color || '#7c9eff', alpha);
 }
 
+// Apply stroke style + dashed pattern to ctx before drawing a line object
+function applyLineStyle(obj) {
+  ctx.strokeStyle = objStroke(obj);
+  ctx.lineWidth = isSelected(obj) ? 3.5 : (obj.lineWidth || 2);
+  if (obj.dashed) {
+    const dash = obj.lineWidth > 3 ? [8, 6] : [6, 4];
+    ctx.setLineDash(dash);
+  } else {
+    ctx.setLineDash([]);
+  }
+}
+function resetLineDash() { ctx.setLineDash([]); }
+
 function adjustAlpha(hex, alpha) {
   // hex may be rgb() or #rrggbb
   if (hex.startsWith('#')) {
@@ -973,8 +986,7 @@ function drawSegment(obj) {
   if (!p1 || !p2) return;
   const c1 = worldToCanvas(p1.x, p1.y), c2 = worldToCanvas(p2.x, p2.y);
   ctx.beginPath(); ctx.moveTo(c1.x, c1.y); ctx.lineTo(c2.x, c2.y);
-  ctx.strokeStyle = objStroke(obj); ctx.lineWidth = isSelected(obj) ? 3.5 : (obj.lineWidth || 2);
-  ctx.stroke();
+  applyLineStyle(obj); ctx.stroke(); resetLineDash();
 }
 
 function drawLine(obj) {
@@ -1016,9 +1028,7 @@ function extendAndDraw(p1w, p2w, obj, clampStart, clampEnd) {
   ctx.beginPath();
   ctx.moveTo(c1.x + tMin * dx, c1.y + tMin * dy);
   ctx.lineTo(c1.x + tMax * dx, c1.y + tMax * dy);
-  ctx.strokeStyle = objStroke(obj);
-  ctx.lineWidth = isSelected(obj) ? 3.5 : (obj.lineWidth || 2);
-  ctx.stroke();
+  applyLineStyle(obj); ctx.stroke(); resetLineDash();
 }
 
 function drawDerivedLine(obj) {
@@ -1042,9 +1052,7 @@ function drawDerivedLine(obj) {
   ctx.beginPath();
   ctx.moveTo(c.x + tMin * dx, c.y + tMin * dy);
   ctx.lineTo(c.x + tMax * dx, c.y + tMax * dy);
-  ctx.strokeStyle = objStroke(obj);
-  ctx.lineWidth = isSelected(obj) ? 3.5 : (obj.lineWidth || 2);
-  ctx.stroke();
+  applyLineStyle(obj); ctx.stroke(); resetLineDash();
 }
 
 function drawVector(obj) {
@@ -1052,8 +1060,7 @@ function drawVector(obj) {
   if (!p1 || !p2) return;
   const c1 = worldToCanvas(p1.x, p1.y), c2 = worldToCanvas(p2.x, p2.y);
   ctx.beginPath(); ctx.moveTo(c1.x, c1.y); ctx.lineTo(c2.x, c2.y);
-  ctx.strokeStyle = objStroke(obj); ctx.lineWidth = isSelected(obj) ? 3.5 : (obj.lineWidth || 2);
-  ctx.stroke();
+  applyLineStyle(obj); ctx.stroke(); resetLineDash();
   // Arrow head
   const angle = Math.atan2(c2.y - c1.y, c2.x - c1.x);
   const size = 12;
@@ -1071,8 +1078,7 @@ function drawCircle(obj) {
   const cc = worldToCanvas(cen.x, cen.y);
   const rPx = obj.r * state.scale;
   ctx.beginPath(); ctx.arc(cc.x, cc.y, rPx, 0, Math.PI * 2);
-  ctx.strokeStyle = objStroke(obj); ctx.lineWidth = isSelected(obj) ? 3.5 : (obj.lineWidth || 2);
-  ctx.stroke();
+  applyLineStyle(obj); ctx.stroke(); resetLineDash();
   if (isSelected(obj)) {
     ctx.beginPath(); ctx.arc(cc.x, cc.y, rPx, 0, Math.PI * 2);
     ctx.fillStyle = adjustAlpha(obj.color || '#7c9eff', 0.05); ctx.fill();
@@ -1084,8 +1090,7 @@ function drawCircle3pts(obj) {
   const cc = worldToCanvas(obj.cx, obj.cy);
   const rPx = obj.r * state.scale;
   ctx.beginPath(); ctx.arc(cc.x, cc.y, rPx, 0, Math.PI * 2);
-  ctx.strokeStyle = objStroke(obj); ctx.lineWidth = isSelected(obj) ? 3.5 : (obj.lineWidth || 2);
-  ctx.stroke();
+  applyLineStyle(obj); ctx.stroke(); resetLineDash();
 }
 
 function drawSemicircle(obj) {
@@ -1097,9 +1102,10 @@ function drawSemicircle(obj) {
   const rPx = r * state.scale;
   const angle = Math.atan2(-(p2.y - p1.y), p2.x - p1.x);
   ctx.beginPath(); ctx.arc(cc.x, cc.y, rPx, angle, angle + Math.PI);
-  ctx.strokeStyle = objStroke(obj); ctx.lineWidth = obj.lineWidth || 2; ctx.stroke();
+  applyLineStyle(obj); ctx.stroke(); resetLineDash();
   const c1 = worldToCanvas(p1.x, p1.y), c2 = worldToCanvas(p2.x, p2.y);
-  ctx.beginPath(); ctx.moveTo(c1.x, c1.y); ctx.lineTo(c2.x, c2.y); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(c1.x, c1.y); ctx.lineTo(c2.x, c2.y);
+  applyLineStyle(obj); ctx.stroke(); resetLineDash();
 }
 
 function drawArc(obj) {
@@ -1110,7 +1116,7 @@ function drawArc(obj) {
   const a1 = obj.startAngle || 0;
   const a2 = obj.endAngle || Math.PI;
   ctx.beginPath(); ctx.arc(cc.x, cc.y, rPx, a1, a2);
-  ctx.strokeStyle = objStroke(obj); ctx.lineWidth = obj.lineWidth || 2; ctx.stroke();
+  applyLineStyle(obj); ctx.stroke(); resetLineDash();
 }
 
 function drawRect(obj, fillOnly) {
@@ -1126,8 +1132,7 @@ function drawRect(obj, fillOnly) {
     ctx.fillStyle = adjustAlpha(obj.fillColor || obj.color || '#7c9eff', alpha);
     ctx.fill();
   } else {
-    ctx.strokeStyle = objStroke(obj); ctx.lineWidth = isSelected(obj) ? 3.5 : (obj.lineWidth || 2);
-    ctx.stroke();
+    applyLineStyle(obj); ctx.stroke(); resetLineDash();
   }
 }
 
@@ -1146,8 +1151,7 @@ function drawPolygon(obj, fillOnly) {
     ctx.fillStyle = adjustAlpha(obj.color || '#7c9eff', 0.12);
     ctx.fill();
   } else {
-    ctx.strokeStyle = objStroke(obj); ctx.lineWidth = isSelected(obj) ? 3.5 : (obj.lineWidth || 2);
-    ctx.stroke();
+    applyLineStyle(obj); ctx.stroke(); resetLineDash();
   }
 }
 
@@ -2400,9 +2404,11 @@ function showProperties(obj) {
     html += `<div class="prop-row"><label>Opacité</label><input type="range" id="pfillop" min="0" max="1" step="0.05" value="${obj.fillOpacity != null ? obj.fillOpacity : 0.15}" style="width:80px"><span id="pfillop-val">${Math.round((obj.fillOpacity != null ? obj.fillOpacity : 0.15)*100)}%</span></div>`;
     html += `<div class="prop-row"><label>Z-index</label><input type="number" id="pzindex" min="-10" max="10" step="1" value="${obj.zIndex || 0}" style="width:55px"></div>`;
   }
-  // Line width
-  if (obj.type !== 'point' && !isPointLike(obj))
+  // Line width + dashed toggle
+  if (obj.type !== 'point' && !isPointLike(obj)) {
     html += `<div class="prop-row"><label>Épaisseur</label><input type="range" id="plw" min="1" max="8" value="${obj.lineWidth || 2}"></div>`;
+    html += `<div class="prop-row"><label>Pointillé</label><input type="checkbox" id="pdashed" ${obj.dashed ? 'checked' : ''}></div>`;
+  }
   // Visible
   html += `<div class="prop-row"><label>Visible</label><input type="checkbox" id="pvis" ${obj.visible ? 'checked' : ''}></div>`;
   // Label
@@ -2427,6 +2433,7 @@ function showProperties(obj) {
   });
   bind('pzindex', e => { obj.zIndex = parseInt(e.target.value) || 0; render(); });
   bind('plw', e => { obj.lineWidth = parseInt(e.target.value); render(); });
+  { const el = content.querySelector('#pdashed'); if (el) el.addEventListener('change', e => { obj.dashed = e.target.checked; render(); saveUndo(); }); }
   bind('pvis', e => { obj.visible = e.target.checked; render(); updateAlgebra(); });
   bind('plabel', e => { obj.label = e.target.value; updateAlgebra(); });
 }
@@ -2865,7 +2872,7 @@ const geoApp = {
 
   getAllObjects() {
     return state.objects.map(obj => {
-      const info = { label: obj.label, type: obj.type, visible: obj.visible, fixed: !!obj.fixed };
+      const info = { label: obj.label, type: obj.type, visible: obj.visible, fixed: !!obj.fixed, dashed: !!obj.dashed };
       if (isPointLike(obj)) { info.x = obj.x; info.y = obj.y; }
       if (obj.type === 'segment' || obj.type === 'line' || obj.type === 'ray' || obj.type === 'vector') {
         const p1 = getPoint(obj.p1id), p2 = getPoint(obj.p2id);
