@@ -427,9 +427,21 @@
       font-size: 11px;
       border-bottom: 1px solid var(--border);
       transition: background .1s;
+      cursor: pointer;
     }
     .ref-obj-item:last-child { border-bottom: none; }
     .ref-obj-item:hover { background: var(--highlight); }
+    .ref-obj-item.selected { background: rgba(137,180,250,.18); border-left: 2px solid #89b4fa; }
+    .ref-obj-type-header {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      padding: 4px 8px 2px;
+      background: rgba(0,0,0,.2);
+      border-bottom: 1px solid var(--border);
+    }
 
     .ref-obj-icon { font-size: 14px; flex-shrink: 0; }
     .ref-obj-coords { flex: 1; font-family: monospace; color: var(--text-muted); font-size: 10px; }
@@ -1184,9 +1196,14 @@ function getSelectedObj() {
 setInterval(() => {
   const obj = getSelectedObj();
   if (obj) {
-    if (_selectedObjId !== obj.id) { _selectedObjId = obj.id; showObjProps(obj); }
+    if (_selectedObjId !== obj.id) {
+      _selectedObjId = obj.id;
+      showObjProps(obj);
+      syncRefObjPanel(); // highlight in list
+    }
   } else if (_selectedObjId !== null) {
     _selectedObjId = null; hideObjProps();
+    syncRefObjPanel();
   }
 }, 200);
 
@@ -1609,26 +1626,54 @@ function objCoordsLabel(obj) {
   return obj.type || '';
 }
 
+const TYPE_GROUPS = [
+  { key: 'point',   label: 'Points',    types: ['point','midpoint','intersect'] },
+  { key: 'segment', label: 'Segments',  types: ['segment'] },
+  { key: 'line',    label: 'Droites / Demi-droites / Vecteurs', types: ['line','ray','vector','parallel','perpendicular','perp-bisector','angle-bisector'] },
+  { key: 'circle',  label: 'Cercles',   types: ['circle','circle3pts'] },
+  { key: 'polygon', label: 'Polygones / Rectangles / Triangles', types: ['polygon','rect','triangle'] },
+  { key: 'other',   label: 'Autres',    types: [] },
+];
+function getTypeGroup(type) {
+  return TYPE_GROUPS.find(g => g.types.includes(type)) || TYPE_GROUPS[TYPE_GROUPS.length - 1];
+}
+
 function buildRefObjList(q) {
   const objs = getRefObjects();
   if (objs.length === 0) {
     return '<div class="empty-objects">Aucun objet — dessinez sur le canvas avec les outils.</div>';
   }
-  return objs.map(obj => {
-    const role = getRole(obj.id);
-    const coords = objCoordsLabel(obj);
-    return `<div class="ref-obj-item" data-id="${obj.id}">
-      <span style="font-weight:700;min-width:22px;font-size:11px;color:${role==='given'?'#f9e2af':'#f38ba8'}">${obj.label}</span>
-      <div style="display:flex;flex-direction:column;gap:2px;flex:1">
-        <div style="display:flex;gap:3px">
-          <button class="role-btn ${role==='given'?'role-active':''}" data-id="${obj.id}" data-role="given"  title="Donné (visible au départ)">Donné</button>
-          <button class="role-btn ${role==='expected'?'role-active':''}" data-id="${obj.id}" data-role="expected" title="À tracer par l'élève">À tracer</button>
+  // Group by type
+  const groups = {};
+  objs.forEach(obj => {
+    const gk = getTypeGroup(obj.type).key;
+    if (!groups[gk]) groups[gk] = [];
+    groups[gk].push(obj);
+  });
+  let html = '';
+  TYPE_GROUPS.forEach(tg => {
+    const list = groups[tg.key];
+    if (!list || list.length === 0) return;
+    html += `<div class="ref-obj-type-header">${tg.label}</div>`;
+    list.forEach(obj => {
+      const role = getRole(obj.id);
+      const coords = objCoordsLabel(obj);
+      const isSel = _selectedObjId === obj.id;
+      const dashedBadge = obj.dashed ? `<span style="font-size:9px;color:#89b4fa;margin-left:3px">- -</span>` : '';
+      html += `<div class="ref-obj-item${isSel ? ' selected' : ''}" data-id="${obj.id}">
+        <span style="font-weight:700;min-width:22px;font-size:11px;color:${role==='given'?'#f9e2af':'#f38ba8'}">${obj.label}${dashedBadge}</span>
+        <div style="display:flex;flex-direction:column;gap:2px;flex:1">
+          <div style="display:flex;gap:3px">
+            <button class="role-btn ${role==='given'?'role-active':''}" data-id="${obj.id}" data-role="given" title="Donné (visible au départ)">Donné</button>
+            <button class="role-btn ${role==='expected'?'role-active':''}" data-id="${obj.id}" data-role="expected" title="À tracer par l'élève">À tracer</button>
+          </div>
+          <span class="ref-obj-coords">${coords}</span>
         </div>
-        <span class="ref-obj-coords">${coords}</span>
-      </div>
-      <button class="ref-obj-del ref-obj-del-btn" data-id="${obj.id}" title="Supprimer">✕</button>
-    </div>`;
-  }).join('');
+        <button class="ref-obj-del ref-obj-del-btn" data-id="${obj.id}" title="Supprimer">✕</button>
+      </div>`;
+    });
+  });
+  return html;
 }
 
 function syncRefObjPanel() {
@@ -1644,8 +1689,24 @@ function syncRefObjPanel() {
   });
 
   listEl.querySelectorAll('.role-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
       setRole(parseInt(btn.dataset.id), btn.dataset.role);
+    });
+  });
+
+  // Clic sur un item → sélectionner l'objet sur le canvas
+  listEl.querySelectorAll('.ref-obj-item').forEach(item => {
+    item.addEventListener('click', e => {
+      if (e.target.closest('button')) return; // ignore btn clicks
+      const id = parseInt(item.dataset.id);
+      const obj = state.objects.find(o => o.id === id);
+      if (!obj) return;
+      state.selected = [id];
+      _selectedObjId = id;
+      showObjProps(obj);
+      render();
+      syncRefObjPanel();
     });
   });
 
