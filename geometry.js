@@ -1879,9 +1879,6 @@ canvas.addEventListener('mousedown', e => {
       e.preventDefault(); return;
     }
   }
-      e.preventDefault(); return;
-    }
-  }
 
   if (e.button === 2 && !e.shiftKey) return;
 
