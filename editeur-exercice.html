@@ -548,6 +548,21 @@
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
+    /* Left panel collapsible sections */
+    .left-panel-toggle {
+      cursor: pointer;
+      user-select: none;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 0;
+    }
+    .left-panel-toggle:hover { color: var(--accent); }
+    .left-chevron { font-size: 10px; transition: transform .2s; }
+    .left-chevron.collapsed { transform: rotate(-90deg); }
+    .left-collapsible-body { overflow: hidden; transition: max-height .2s ease; }
+    .left-collapsible-body.collapsed { max-height: 0 !important; }
+
     /* Algebra list (objects panel) */
     .algebra-item {
       display: flex; align-items: center; gap: 6px;
@@ -581,60 +596,67 @@
 
   <!-- ── LEFT: Exercise metadata ── -->
   <div id="left-panel">
-    <div class="panel-section">
-      <h3>Métadonnées</h3>
-
-      <div class="form-row">
-        <label>Titre de l'exercice</label>
-        <input type="text" id="ex-title" placeholder="Ex : Représentation orthographique n°1" value="">
-      </div>
-
-      <div class="form-row">
-        <label>Instructions générales</label>
-        <textarea id="ex-global-instructions" placeholder="Consigne générale visible au départ de l'exercice…" rows="3"></textarea>
-      </div>
-
-      <div class="form-row">
-        <label>Image de référence (URL)</label>
-        <input type="url" id="ex-image-url" placeholder="https://…/image.png">
-        <div class="upload-row">
-          <span style="font-size:11px;color:var(--text-muted)">ou</span>
-          <label class="upload-label">
-            📂 Importer un fichier
-            <input type="file" id="ex-image-file" accept="image/*" style="display:none">
-          </label>
+    <div class="panel-section collapsible-section">
+      <h3 class="collapsible-header left-panel-toggle" data-target="left-meta-body">
+        Métadonnées <span class="left-chevron">▼</span>
+      </h3>
+      <div id="left-meta-body" class="left-collapsible-body">
+        <div class="form-row">
+          <label>Titre de l'exercice</label>
+          <input type="text" id="ex-title" placeholder="Ex : Représentation orthographique n°1" value="">
         </div>
-        <img id="ex-image-preview" class="img-preview" alt="Aperçu">
-      </div>
 
-      <div class="form-row">
-        <label>Nombre total de questions</label>
-        <input type="number" id="ex-total-questions" value="1" min="1" max="20">
+        <div class="form-row">
+          <label>Instructions générales</label>
+          <textarea id="ex-global-instructions" placeholder="Consigne générale visible au départ de l'exercice…" rows="3"></textarea>
+        </div>
+
+        <div class="form-row">
+          <label>Image de référence (URL)</label>
+          <input type="url" id="ex-image-url" placeholder="https://…/image.png">
+          <div class="upload-row">
+            <span style="font-size:11px;color:var(--text-muted)">ou</span>
+            <label class="upload-label">
+              📂 Importer un fichier
+              <input type="file" id="ex-image-file" accept="image/*" style="display:none">
+            </label>
+          </div>
+          <img id="ex-image-preview" class="img-preview" alt="Aperçu">
+        </div>
+
+        <div class="form-row">
+          <label>Nombre total de questions</label>
+          <input type="number" id="ex-total-questions" value="1" min="1" max="20">
+        </div>
       </div>
     </div>
 
-    <div class="panel-section">
-      <h3>Options canvas</h3>
-      <div class="form-row">
-        <label>Grille (unités)</label>
-        <select id="opt-grid">
-          <option value="1" selected>1 unité</option>
-          <option value="0.5">0.5 unité</option>
-          <option value="2">2 unités</option>
-        </select>
-      </div>
-      <div class="form-row">
-        <label>Zoom initial</label>
-        <select id="opt-zoom">
-          <option value="40">40 px/u (éloigné)</option>
-          <option value="60" selected>60 px/u (normal)</option>
-          <option value="80">80 px/u (proche)</option>
-          <option value="100">100 px/u (très proche)</option>
-        </select>
-      </div>
-      <div class="form-row">
-        <label>Couleur des objets référence</label>
-        <input type="color" id="opt-ref-color" value="#f38ba8">
+    <div class="panel-section collapsible-section">
+      <h3 class="collapsible-header left-panel-toggle" data-target="left-canvas-body">
+        Options canvas <span class="left-chevron">▼</span>
+      </h3>
+      <div id="left-canvas-body" class="left-collapsible-body">
+        <div class="form-row">
+          <label>Grille (unités)</label>
+          <select id="opt-grid">
+            <option value="1" selected>1 unité</option>
+            <option value="0.5">0.5 unité</option>
+            <option value="2">2 unités</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>Zoom initial</label>
+          <select id="opt-zoom">
+            <option value="40">40 px/u (éloigné)</option>
+            <option value="60" selected>60 px/u (normal)</option>
+            <option value="80">80 px/u (proche)</option>
+            <option value="100">100 px/u (très proche)</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>Couleur des objets référence</label>
+          <input type="color" id="opt-ref-color" value="#f38ba8">
+        </div>
       </div>
     </div>
 
@@ -2355,6 +2377,22 @@ document.getElementById('btn-test').addEventListener('click', () => {
   }
   makeCollapsible('toggle-palette', 'palette-body');
   makeCollapsible('toggle-props', 'props-body', document.getElementById('props-chevron'));
+
+  // Left panel collapsibles
+  document.querySelectorAll('.left-panel-toggle').forEach(function(h3) {
+    const bodyId = h3.getAttribute('data-target');
+    const body = document.getElementById(bodyId);
+    const chevron = h3.querySelector('.left-chevron');
+    if (!body) return;
+    body.style.maxHeight = body.scrollHeight + 'px';
+    h3.addEventListener('click', function() {
+      const isOpen = !body.classList.contains('collapsed');
+      body.classList.toggle('collapsed', isOpen);
+      if (isOpen) body.style.maxHeight = '0';
+      else body.style.maxHeight = body.scrollHeight + 'px';
+      if (chevron) chevron.classList.toggle('collapsed', isOpen);
+    });
+  });
 })();
 
 // ── Wire obj-props-panel inputs ───────────────────
