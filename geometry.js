@@ -1995,6 +1995,14 @@ canvas.addEventListener('mousedown', e => {
         if (grp) showProperties(grp);
         render(); return;
       }
+      // If clicking a point that is already part of a multi-selection → drag all selected points
+      if (state.selected.length > 1 && state.selected.includes(obj.id)) {
+        state.isDragging = true;
+        state.dragTarget = obj.id;
+        state.dragOffsetWorld = { x: obj.x - world.x, y: obj.y - world.y };
+        // keep state.selected as-is so all selected points move together
+        render(); return;
+      }
       state.isDragging = true;
       state.dragTarget = obj.id;
       state.dragOffsetWorld = { x: obj.x - world.x, y: obj.y - world.y };
@@ -2118,12 +2126,25 @@ canvas.addEventListener('mousemove', e => {
       const newPos = snapToGrid(world.x + state.dragOffsetWorld.x, world.y + state.dragOffsetWorld.y);
       const ddx = newPos.x - obj.x;
       const ddy = newPos.y - obj.y;
-      obj.x = newPos.x; obj.y = newPos.y;
-      // Move group members if in a group and not editing that group
-      if (obj.groupId && state.editingGroupId !== obj.groupId) {
-        getGroupMembers(obj.groupId).forEach(m => {
-          if (m.id !== obj.id && isPointLike(m)) { m.x += ddx; m.y += ddy; }
+      if (ddx === 0 && ddy === 0) { render(); return; }
+      // Multi-selection drag: move all selected points by the same delta
+      if (state.selected.length > 1 && state.selected.includes(obj.id)) {
+        const movedIds = new Set();
+        state.selected.forEach(sid => {
+          const pt = getObj(sid);
+          if (pt && isPointLike(pt) && !pt.fixed && !movedIds.has(pt.id)) {
+            movedIds.add(pt.id);
+            pt.x += ddx; pt.y += ddy;
+          }
         });
+      } else {
+        obj.x = newPos.x; obj.y = newPos.y;
+        // Move group members if in a group and not editing that group
+        if (obj.groupId && state.editingGroupId !== obj.groupId) {
+          getGroupMembers(obj.groupId).forEach(m => {
+            if (m.id !== obj.id && isPointLike(m)) { m.x += ddx; m.y += ddy; }
+          });
+        }
       }
       evalAll(); updateAlgebra();
       updatePropertiesLive(obj);
