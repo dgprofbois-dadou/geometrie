@@ -2159,9 +2159,12 @@ function generateJS(data) {
     }
 
     // Figures déplaçables
+    var hasMobileFg = q.figureGroups && q.figureGroups.some(function(fg){ return fg.mobile !== false; });
+    var rotHint = document.getElementById('ex-rotation-hint');
+    if (rotHint) rotHint.style.display = hasMobileFg ? 'block' : 'none';
     if (q.figureGroups && q.figureGroups.length > 0) {
       q.figureGroups.forEach(function(fg) {
-        geoApp.defineFigureGroup(fg.id, fg.label, fg.objectIds, fg.pivotLabel, fg.targetZoneId, fg.targetX, fg.targetY, fg.tolerance, fg.startX, fg.startY, fg.alignConstraint, fg.mobile);
+        geoApp.defineFigureGroup(fg.id, fg.label, fg.objectIds, fg.pivotLabel, fg.targetZoneId, fg.targetX, fg.targetY, fg.tolerance, fg.startX, fg.startY, fg.alignConstraint, fg.mobile, fg.rotationStep);
       });
       geoApp.resetAllGroupsToStart();
       // Apply start angle (pre-rotated state to force student to rotate)
