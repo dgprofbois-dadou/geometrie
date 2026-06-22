@@ -2182,11 +2182,34 @@ canvas.addEventListener('mousemove', e => {
           const o = state.objects.find(ob => ob.id === oid);
           if (o) moveObjectBy(o, ddx, ddy, movedSet, true);
         });
-        // Highlight zone under pivot (seulement en mode exercice)
+        // Highlight zone under pivot — validate in real-time during drag
         if (state.exerciseMode) {
           const zone = getGroupZoneAt(pivot.x, pivot.y);
+          const zoneId = zone ? zone.id : null;
+          const inTarget = zoneId != null && fg.targetZoneId != null && zoneId === fg.targetZoneId;
+          let alignOk = true;
+          if (inTarget && fg.alignConstraint && fg.alignConstraint.axis) {
+            const ac = fg.alignConstraint;
+            const refFg = state.figureGroups.find(g => g.id === ac.refGroupId);
+            if (refFg) {
+              const refBounds = getGroupBounds(refFg);
+              const mobBounds = getGroupBounds(fg);
+              const tol = ac.tolerance != null ? ac.tolerance : 0.5;
+              if (ac.axis === 'x') {
+                alignOk = Math.abs(mobBounds.minX - refBounds.minX) <= tol
+                       && Math.abs(mobBounds.maxX - refBounds.maxX) <= tol;
+              } else if (ac.axis === 'y') {
+                alignOk = Math.abs(mobBounds.minY - refBounds.minY) <= tol
+                       && Math.abs(mobBounds.maxY - refBounds.maxY) <= tol;
+              }
+            }
+          }
+          // Reset non-green zones, then color current zone
           state.zones.forEach(z => { if (z.state !== 'green') z.state = 'active'; });
-          if (zone && zone.state !== 'green') zone.state = 'yellow';
+          if (zone && zone.state !== 'green') {
+            zone.state = (inTarget && alignOk) ? 'green' : (inTarget ? 'yellow' : 'active');
+          }
+          fg.currentZoneId = zoneId;
         }
         render();
       }
