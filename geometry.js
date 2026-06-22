@@ -2490,6 +2490,7 @@ document.addEventListener('keydown', e => {
     case 'g': case 'G': setTool('segment'); break;
     case 'd': case 'D': setTool('line'); break;
     case 'c': case 'C': setTool('circle-center-point'); break;
+    case 'r': case 'R': setTool('rotate'); break;
     case 'f': case 'F': fitView(); break;
     case '+': case '=': zoom(1.2); break;
     case '-': zoom(1 / 1.2); break;
