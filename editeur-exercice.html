@@ -1632,6 +1632,12 @@ function wireFigureGroupAlignControls(q) {
       if (fg) { fg.rotationStep = parseInt(this.value) || 90; scheduleSave(); syncFigureGroupsToCanvas(q); }
     });
   });
+  document.querySelectorAll('.fg-start-angle').forEach(inp => {
+    inp.addEventListener('input', function() {
+      const fg = (q.figureGroups || []).find(g => g.id === this.dataset.fgid);
+      if (fg) { fg.startAngle = parseFloat(this.value) || 0; scheduleSave(); }
+    });
+  });
   document.querySelectorAll('.fg-align-ref').forEach(sel => {
     sel.addEventListener('change', function() {
       const fg = (q.figureGroups || []).find(g => g.id === this.dataset.fgid);
@@ -1683,6 +1689,9 @@ function buildFigureGroupsList(q) {
       ${isMobile ? `<div style="padding:4px 8px 6px;border-top:1px solid var(--border);background:rgba(0,0,0,.15);font-size:10px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">
         <label style="color:var(--text-muted);display:flex;align-items:center;gap:4px">Rotation (°) :
           <input type="number" class="fg-rotation-step" data-fgid="${fg.id}" value="${fg.rotationStep != null ? fg.rotationStep : 90}" min="1" max="180" step="1" style="width:48px;font-size:10px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:3px;padding:1px 3px">
+        </label>
+        <label style="color:var(--text-muted);display:flex;align-items:center;gap:4px" title="Angle de départ appliqué à la figure dans la palette (force l'élève à tourner la figure)">Départ (°) :
+          <input type="number" class="fg-start-angle" data-fgid="${fg.id}" value="${fg.startAngle != null ? fg.startAngle : 0}" min="-360" max="360" step="1" style="width:48px;font-size:10px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:3px;padding:1px 3px">
         </label>
         <span style="color:var(--text-muted)">Alignement :</span>
         <select class="fg-align-axis" data-fgid="${fg.id}" style="font-size:10px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:3px;padding:1px 3px">
@@ -1942,7 +1951,8 @@ function buildExerciseData() {
         startX: fg.startX, startY: fg.startY,
         alignConstraint: fg.alignConstraint || null,
         mobile: fg.mobile !== false,
-        rotationStep: fg.rotationStep != null ? fg.rotationStep : 90
+        rotationStep: fg.rotationStep != null ? fg.rotationStep : 90,
+        startAngle: fg.startAngle || 0
       })),
       // Complete scene state: all objects + their roles embedded
       geoState: annotatedGeoState,
@@ -2154,6 +2164,10 @@ function generateJS(data) {
         geoApp.defineFigureGroup(fg.id, fg.label, fg.objectIds, fg.pivotLabel, fg.targetZoneId, fg.targetX, fg.targetY, fg.tolerance, fg.startX, fg.startY, fg.alignConstraint, fg.mobile);
       });
       geoApp.resetAllGroupsToStart();
+      // Apply start angle (pre-rotated state to force student to rotate)
+      q.figureGroups.forEach(function(fg) {
+        if (fg.startAngle) geoApp.rotateFigureGroupByAngle(fg.id, fg.startAngle);
+      });
       geoApp.onGroupMoved(function(groupId, zoneId, x, y) {
         scheduleValidate();
       });

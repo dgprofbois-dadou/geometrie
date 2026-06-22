@@ -3281,6 +3281,32 @@ const geoApp = {
     return fg ? fg.currentZoneId : null;
   },
 
+  rotateFigureGroupByAngle(groupId, angleDeg) {
+    const fg = state.figureGroups.find(g => g.id === groupId);
+    if (!fg || !angleDeg) return;
+    const pivot = state.objects.find(o => o.id === fg.pivotId || o.label === fg.pivotLabel);
+    if (!pivot) return;
+    const rad = angleDeg * Math.PI / 180;
+    const cx = pivot.x, cy = pivot.y;
+    const movedIds = new Set();
+    fg.objectIds.forEach(oid => {
+      const o = state.objects.find(ob => ob.id === oid);
+      if (!o) return;
+      const ptIds = getDefiningPointIds(o);
+      (ptIds.length > 0 ? ptIds : (isPointLike(o) ? [o.id] : [])).forEach(pid => {
+        if (movedIds.has(pid) || pid === pivot.id) return;
+        movedIds.add(pid);
+        const pt = state.objects.find(ob => ob.id === pid);
+        if (pt) {
+          const dx = pt.x - cx, dy = pt.y - cy;
+          pt.x = cx + dx * Math.cos(rad) - dy * Math.sin(rad);
+          pt.y = cy + dx * Math.sin(rad) + dy * Math.cos(rad);
+        }
+      });
+    });
+    evalAll(); render();
+  },
+
   getAllObjects() {
     return state.objects.map(obj => {
       const info = { id: obj.id, label: obj.label, type: obj.type, visible: obj.visible, fixed: !!obj.fixed, dashed: !!obj.dashed, _role: obj._role, showLabel: obj.showLabel !== false, labelMode: obj.labelMode || 'name', labelDx: obj.labelDx || 0, labelDy: obj.labelDy || 0 };
