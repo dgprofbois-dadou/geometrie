@@ -849,30 +849,33 @@
         Ajuster
       </button>
 
-      <!-- Rotate options (visible uniquement quand l'outil Rotation est actif) -->
-      <div id="rotate-options" style="display:none;align-items:center;gap:8px;font-size:11px;border-left:1px solid var(--border);padding-left:8px;margin-left:4px">
-        <div style="display:flex;border:1px solid var(--border);border-radius:4px;overflow:hidden">
-          <button id="rotate-mode-angle" class="rotate-mode-btn active"
-            style="padding:2px 7px;background:var(--accent,#89b4fa);color:#1e1e2e;border:none;cursor:pointer;font-size:10px">Par angle</button>
-          <button id="rotate-mode-3pts" class="rotate-mode-btn"
-            style="padding:2px 7px;background:transparent;color:var(--text,#cdd6f4);border:none;cursor:pointer;font-size:10px">3 points</button>
-        </div>
-        <div id="rotate-angle-controls" style="display:flex;align-items:center;gap:5px">
-          <label style="display:flex;align-items:center;gap:3px">
-            Angle : <input type="number" id="rotate-angle" value="45" step="1" min="-360" max="360"
-              style="width:50px;padding:1px 4px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:11px"> °
-          </label>
-          <label style="display:flex;align-items:center;gap:3px;cursor:pointer">
-            <input type="checkbox" id="rotate-ccw"> ↺
-          </label>
-        </div>
-      </div>
-
       <div style="flex:1"></div>
 
       <span id="canvas-q-label" style="font-size:11px;color:var(--accent);font-weight:700;padding:0 8px">
         Q1
       </span>
+    </div>
+
+    <!-- Barre contextuelle Rotation (visible uniquement quand l'outil Rotation est actif) -->
+    <div id="rotate-options" style="display:none;align-items:center;gap:10px;padding:5px 12px;background:var(--surface);border-bottom:1px solid var(--border);font-size:12px;flex-shrink:0">
+      <span style="color:var(--accent);font-weight:600;font-size:11px">⟳ Rotation :</span>
+      <div style="display:flex;border:1px solid var(--border);border-radius:4px;overflow:hidden">
+        <button id="rotate-mode-angle" class="rotate-mode-btn active"
+          style="padding:3px 10px;background:var(--accent,#89b4fa);color:#1e1e2e;border:none;cursor:pointer;font-size:11px;font-weight:600">Par angle</button>
+        <button id="rotate-mode-3pts" class="rotate-mode-btn"
+          style="padding:3px 10px;background:transparent;color:var(--text,#cdd6f4);border:none;cursor:pointer;font-size:11px">3 points</button>
+      </div>
+      <div id="rotate-angle-controls" style="display:flex;align-items:center;gap:6px">
+        <label style="display:flex;align-items:center;gap:4px;color:var(--text)">
+          Angle :
+          <input type="number" id="rotate-angle" value="45" step="1" min="-360" max="360"
+            style="width:54px;padding:2px 5px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:12px">
+          °
+        </label>
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;color:var(--text)">
+          <input type="checkbox" id="rotate-ccw"> ↺ sens inverse
+        </label>
+      </div>
     </div>
 
     <div id="canvas-container">
