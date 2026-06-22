@@ -43,6 +43,11 @@ const state = {
   groupDragOffset: null,  // {dx, dy} world offset
   groupDragOrigPos: null, // {x,y} original pivot position
   groupMovedCallback: null,
+  isDraggingLabel: false,    // right-click drag of a label
+  labelDragId: null,         // id of object whose label is being dragged
+  labelDragStartCanvas: null,// {x,y} canvas pos at drag start
+  labelDragOrigDx: 0,        // original labelDx at drag start
+  labelDragOrigDy: 0,        // original labelDy at drag start
   // label counter
   labelCounters: { point: 0, line: 0, circle: 0, polygon: 0, text: 0, angle: 0, measure: 0 },
   editingGroupId: null,        // type:group currently being edited
@@ -1005,10 +1010,19 @@ function drawPoint(obj) {
     else if (mode === 'value') labelText = `(${obj.x != null ? obj.x.toFixed(1) : ''},${obj.y != null ? obj.y.toFixed(1) : ''})`;
     else if (mode === 'name+value') labelText = `${obj.label}(${obj.x != null ? obj.x.toFixed(1) : ''},${obj.y != null ? obj.y.toFixed(1) : ''})`;
     if (labelText) {
+      const lx = c.x + 7 + (obj.labelDx || 0);
+      const ly = c.y - 4 + (obj.labelDy || 0);
       ctx.fillStyle = sel ? 'rgba(255,220,50,1)' : objStroke(obj);
       ctx.font = 'bold 12px serif';
       ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
-      ctx.fillText(labelText, c.x + 7, c.y - 4);
+      ctx.fillText(labelText, lx, ly);
+      // Drag handle hint when label is being dragged
+      if (state.labelDragId === obj.id) {
+        ctx.strokeStyle = 'rgba(255,220,50,0.6)'; ctx.lineWidth = 1;
+        ctx.setLineDash([3,3]);
+        ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.lineTo(lx, ly); ctx.stroke();
+        ctx.setLineDash([]);
+      }
     }
   }
 }
@@ -1652,6 +1666,28 @@ function snapToObjectPoint(obj, wx, wy) {
   return { x: wx, y: wy };
 }
 
+// Returns canvas {x, y} of the label anchor for a point object
+function getLabelCanvasPos(obj) {
+  if (!isPointLike(obj) || obj.x == null) return null;
+  const c = worldToCanvas(obj.x, obj.y);
+  return { x: c.x + 7 + (obj.labelDx || 0), y: c.y - 4 + (obj.labelDy || 0) };
+}
+
+// Find object whose label is near canvas position (cx, cy)
+function findLabelAt(cx, cy) {
+  ctx.font = 'bold 12px serif';
+  for (let i = state.objects.length - 1; i >= 0; i--) {
+    const o = state.objects[i];
+    if (!isPointLike(o) || !o.visible || o.showLabel === false || !o.label) continue;
+    const lpos = getLabelCanvasPos(o);
+    if (!lpos) continue;
+    const tw = ctx.measureText(o.label).width;
+    const th = 14;
+    if (cx >= lpos.x - 4 && cx <= lpos.x + tw + 4 && cy >= lpos.y - th - 2 && cy <= lpos.y + 4) return o;
+  }
+  return null;
+}
+
 function findNearPoint(wx, wy) {
   const cPos = worldToCanvas(wx, wy);
   for (let i = state.objects.length - 1; i >= 0; i--) {
@@ -1876,6 +1912,20 @@ canvas.addEventListener('mousedown', e => {
       rotGroup.currentZoneId = zoneId;
       if (state.groupMovedCallback) state.groupMovedCallback(rotGroup.id, zoneId, pivot.x, pivot.y);
       saveUndo(); render();
+      e.preventDefault(); return;
+    }
+  }
+
+  // Right-click drag on a label (select mode, any context)
+  if (e.button === 2 && state.tool === 'select') {
+    const labelObj = findLabelAt(pos.x, pos.y);
+    if (labelObj) {
+      state.isDraggingLabel = true;
+      state.labelDragId = labelObj.id;
+      state.labelDragStartCanvas = { x: pos.x, y: pos.y };
+      state.labelDragOrigDx = labelObj.labelDx || 0;
+      state.labelDragOrigDy = labelObj.labelDy || 0;
+      canvas.style.cursor = 'move';
       e.preventDefault(); return;
     }
   }
@@ -2124,8 +2174,20 @@ canvas.addEventListener('mousemove', e => {
     }
   }
 
+  // Label drag
+  if (state.isDraggingLabel && state.labelDragId) {
+    const obj = getObj(state.labelDragId);
+    if (obj) {
+      obj.labelDx = state.labelDragOrigDx + (pos.x - state.labelDragStartCanvas.x);
+      obj.labelDy = state.labelDragOrigDy + (pos.y - state.labelDragStartCanvas.y);
+      render(); return;
+    }
+  }
+
   // Hover
-  const hit = objectAtCanvas(pos.x, pos.y, state.tool === 'select');
+  const labelHovered = state.tool === 'select' && findLabelAt(pos.x, pos.y);
+  if (labelHovered) { canvas.style.cursor = 'move'; }
+  const hit = !labelHovered && objectAtCanvas(pos.x, pos.y, state.tool === 'select');
   const newHover = hit ? hit.id : null;
   if (newHover !== state.hover) {
     state.hover = newHover;
@@ -2149,6 +2211,13 @@ canvas.addEventListener('mousemove', e => {
 
 canvas.addEventListener('mouseup', e => {
   if (state.isPanning) { state.isPanning = false; canvas.style.cursor = (state.tool === 'select' || state.tool === 'lasso') ? 'default' : 'crosshair'; }
+
+  if (state.isDraggingLabel) {
+    state.isDraggingLabel = false;
+    state.labelDragId = null;
+    canvas.style.cursor = 'default';
+    saveUndo(); render(); return;
+  }
 
   if (state.isDragging) {
     // If the dragged point is a pivot, update figureGroup startX/startY
@@ -3062,7 +3131,7 @@ const geoApp = {
 
   getAllObjects() {
     return state.objects.map(obj => {
-      const info = { id: obj.id, label: obj.label, type: obj.type, visible: obj.visible, fixed: !!obj.fixed, dashed: !!obj.dashed, _role: obj._role, showLabel: obj.showLabel !== false, labelMode: obj.labelMode || 'name' };
+      const info = { id: obj.id, label: obj.label, type: obj.type, visible: obj.visible, fixed: !!obj.fixed, dashed: !!obj.dashed, _role: obj._role, showLabel: obj.showLabel !== false, labelMode: obj.labelMode || 'name', labelDx: obj.labelDx || 0, labelDy: obj.labelDy || 0 };
       if (isPointLike(obj)) { info.x = obj.x; info.y = obj.y; }
       if (obj.type === 'segment' || obj.type === 'line' || obj.type === 'ray' || obj.type === 'vector') {
         const p1 = getPoint(obj.p1id), p2 = getPoint(obj.p2id);
