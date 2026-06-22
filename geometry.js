@@ -1583,55 +1583,66 @@ const toolHandlers = {
   },
 
   rotate(wx, wy) {
-    // Center can be: existing point, snap candidate, or free click (raw world coords)
+    // Center can be: existing point, snap candidate, or free click
     const existing = findNearPoint(wx, wy);
     const snapC = !existing && state.snapUnit > 0 ? (findSnapCandidate(wx, wy) || snapToGrid(wx, wy)) : null;
     const centerPos = existing ? { x: existing.x, y: existing.y }
                     : snapC   ? { x: snapC.x, y: snapC.y }
                                : { x: wx, y: wy };
 
+    // If objects are already selected, skip step 1 and go straight to center selection
+    const hasSelection = state.selected.length > 0;
+
     if (!state.tempPoints.length) {
-      // Step 1 : click on source point
+      if (hasSelection) {
+        // Use current selection as sources → mark step ready for center click
+        state.tempPoints.push({ useSelection: true });
+        setStatus(`Étape 2/2 — Cliquez sur le centre de rotation (${state.selected.length} objet(s) sélectionné(s))`);
+        return;
+      }
+      // No selection: click on a source point
       const src = objectAtCanvas(...worldToCanvasPx((state.rawClickWorld||{x:wx,y:wy}).x, (state.rawClickWorld||{x:wx,y:wy}).y));
       if (src && isPointLike(src)) {
-        state.tempPoints.push({ srcId: src.id });
+        state.selected = [src.id];
+        state.tempPoints.push({ useSelection: true });
         setStatus('Étape 2/2 — Cliquez sur le centre de rotation (point existant, grille ou espace libre)');
       } else {
-        setStatus('Étape 1/2 — Cliquez sur le point à faire tourner');
+        setStatus('Étape 1/2 — Cliquez sur un point à faire tourner (ou sélectionnez d\'abord des objets)');
       }
-    } else if (state.tempPoints.length === 1) {
-      // Step 2 : click anywhere for center → apply rotation immediately
-      const angleEl = document.getElementById('rotate-angle');
-      const ccwEl   = document.getElementById('rotate-ccw');
-      let deg = parseFloat(angleEl ? angleEl.value : 45) || 45;
-      if (ccwEl && ccwEl.checked) deg = -deg;
-      const rad = deg * Math.PI / 180;
-
-      const centerId = existing ? existing.id : null;
-      const src = getObj(state.tempPoints[0].srcId);
-      if (!src) { state.tempPoints = []; return; }
-
-      // Compute rotated position
-      const cx = centerPos.x, cy = centerPos.y;
-      const dx = src.x - cx, dy = src.y - cy;
-      const rx = cx + dx * Math.cos(rad) - dy * Math.sin(rad);
-      const ry = cy + dx * Math.sin(rad) + dy * Math.cos(rad);
-
-      // Create a 'rotate' type dependent point (keeps relationship) if center is an existing point
-      // Otherwise create a free rotated point
-      if (centerId) {
-        push({ id: uid(), type: 'rotate', label: nextPointLabel(), color: '#fab387', lineWidth: 2, visible: true,
-               sourceId: src.id, centerId, angle: deg, x: rx, y: ry });
-      } else {
-        // Create a center point then a rotate object
-        const cPt = makePoint(cx, cy);
-        push({ id: uid(), type: 'rotate', label: nextPointLabel(), color: '#fab387', lineWidth: 2, visible: true,
-               sourceId: src.id, centerId: cPt.id, angle: deg, x: rx, y: ry });
-      }
-      state.tempPoints = [];
-      setStatus('Rotation appliquée — cliquez à nouveau sur un point pour continuer');
-      render();
+      render(); return;
     }
+
+    // Step 2: apply rotation to all selected defining points
+    const angleEl = document.getElementById('rotate-angle');
+    const ccwEl   = document.getElementById('rotate-ccw');
+    let deg = parseFloat(angleEl ? angleEl.value : 45) || 45;
+    if (ccwEl && ccwEl.checked) deg = -deg;
+    const rad = deg * Math.PI / 180;
+    const cx = centerPos.x, cy = centerPos.y;
+
+    // Collect all defining point ids from selected objects (avoid double-moving shared points)
+    const movedIds = new Set();
+    state.selected.forEach(sid => {
+      const o = getObj(sid);
+      if (!o) return;
+      const ptIds = isPointLike(o) ? [o.id] : getDefiningPointIds(o);
+      ptIds.forEach(pid => {
+        if (movedIds.has(pid)) return;
+        // Don't rotate the center point itself
+        if (existing && pid === existing.id) return;
+        movedIds.add(pid);
+        const pt = getObj(pid);
+        if (!pt || pt.fixed) return;
+        const dx = pt.x - cx, dy = pt.y - cy;
+        pt.x = cx + dx * Math.cos(rad) - dy * Math.sin(rad);
+        pt.y = cy + dx * Math.sin(rad) + dy * Math.cos(rad);
+      });
+    });
+
+    evalAll(); updateAlgebra();
+    state.tempPoints = [];
+    saveUndo(); render();
+    setStatus(`Rotation de ${deg}° appliquée — sélectionnez d'autres objets ou cliquez pour continuer`);
   },
 
   translate(wx, wy) {
@@ -2502,7 +2513,7 @@ function setTool(tool) {
     area: 'Cliquez sur un polygone pour mesurer son aire',
     'reflect-line': 'Cliquez sur un point, puis sur l\'axe de symétrie',
     'reflect-point': 'Cliquez sur le point à réfléchir, puis sur le centre',
-    rotate: 'Étape 1/2 — Cliquez sur le point à faire tourner',
+    rotate: 'Rotation — sélectionnez des objets puis cliquez, ou cliquez directement sur un point',
     translate: 'Cliquez sur le point, puis sur les deux extrémités du vecteur',
     text: 'Cliquez pour placer le texte',
     delete: 'Cliquez sur un objet pour le supprimer',
