@@ -1583,66 +1583,98 @@ const toolHandlers = {
   },
 
   rotate(wx, wy) {
-    // Center can be: existing point, snap candidate, or free click
+    const mode3pts = document.getElementById('rotate-mode-3pts')?.classList.contains('active');
     const existing = findNearPoint(wx, wy);
     const snapC = !existing && state.snapUnit > 0 ? (findSnapCandidate(wx, wy) || snapToGrid(wx, wy)) : null;
-    const centerPos = existing ? { x: existing.x, y: existing.y }
-                    : snapC   ? { x: snapC.x, y: snapC.y }
-                               : { x: wx, y: wy };
+    const clickPos = existing ? { x: existing.x, y: existing.y }
+                   : snapC   ? { x: snapC.x, y: snapC.y }
+                              : { x: wx, y: wy };
 
-    // If objects are already selected, skip step 1 and go straight to center selection
-    const hasSelection = state.selected.length > 0;
-
-    if (!state.tempPoints.length) {
-      if (hasSelection) {
-        // Use current selection as sources → mark step ready for center click
-        state.tempPoints.push({ useSelection: true });
-        setStatus(`Étape 2/2 — Cliquez sur le centre de rotation (${state.selected.length} objet(s) sélectionné(s))`);
-        return;
-      }
-      // No selection: click on a source point
-      const src = objectAtCanvas(...worldToCanvasPx((state.rawClickWorld||{x:wx,y:wy}).x, (state.rawClickWorld||{x:wx,y:wy}).y));
-      if (src && isPointLike(src)) {
-        state.selected = [src.id];
-        state.tempPoints.push({ useSelection: true });
-        setStatus('Étape 2/2 — Cliquez sur le centre de rotation (point existant, grille ou espace libre)');
-      } else {
-        setStatus('Étape 1/2 — Cliquez sur un point à faire tourner (ou sélectionnez d\'abord des objets)');
-      }
-      render(); return;
+    // Helper: apply rotation by rad around (cx,cy) to all selected objects
+    function applyRotation(cx, cy, rad, excludeId) {
+      const movedIds = new Set();
+      state.selected.forEach(sid => {
+        const o = getObj(sid);
+        if (!o) return;
+        const ptIds = isPointLike(o) ? [o.id] : getDefiningPointIds(o);
+        ptIds.forEach(pid => {
+          if (movedIds.has(pid) || pid === excludeId) return;
+          movedIds.add(pid);
+          const pt = getObj(pid);
+          if (!pt || pt.fixed) return;
+          const dx = pt.x - cx, dy = pt.y - cy;
+          pt.x = cx + dx * Math.cos(rad) - dy * Math.sin(rad);
+          pt.y = cy + dx * Math.sin(rad) + dy * Math.cos(rad);
+        });
+      });
+      evalAll(); updateAlgebra(); saveUndo(); render();
     }
 
-    // Step 2: apply rotation to all selected defining points
-    const angleEl = document.getElementById('rotate-angle');
-    const ccwEl   = document.getElementById('rotate-ccw');
-    let deg = parseFloat(angleEl ? angleEl.value : 45) || 45;
-    if (ccwEl && ccwEl.checked) deg = -deg;
-    const rad = deg * Math.PI / 180;
-    const cx = centerPos.x, cy = centerPos.y;
+    // Ensure selection exists (add clicked point if nothing selected)
+    function ensureSelection() {
+      if (state.selected.length > 0) return true;
+      const src = objectAtCanvas(...worldToCanvasPx((state.rawClickWorld||{x:wx,y:wy}).x, (state.rawClickWorld||{x:wx,y:wy}).y));
+      if (src && isPointLike(src)) { state.selected = [src.id]; return true; }
+      return false;
+    }
 
-    // Collect all defining point ids from selected objects (avoid double-moving shared points)
-    const movedIds = new Set();
-    state.selected.forEach(sid => {
-      const o = getObj(sid);
-      if (!o) return;
-      const ptIds = isPointLike(o) ? [o.id] : getDefiningPointIds(o);
-      ptIds.forEach(pid => {
-        if (movedIds.has(pid)) return;
-        // Don't rotate the center point itself
-        if (existing && pid === existing.id) return;
-        movedIds.add(pid);
-        const pt = getObj(pid);
-        if (!pt || pt.fixed) return;
-        const dx = pt.x - cx, dy = pt.y - cy;
-        pt.x = cx + dx * Math.cos(rad) - dy * Math.sin(rad);
-        pt.y = cy + dx * Math.sin(rad) + dy * Math.cos(rad);
-      });
-    });
-
-    evalAll(); updateAlgebra();
-    state.tempPoints = [];
-    saveUndo(); render();
-    setStatus(`Rotation de ${deg}° appliquée — sélectionnez d'autres objets ou cliquez pour continuer`);
+    if (mode3pts) {
+      // ── Mode 3 points : centre → point de départ → point d'arrivée ──
+      if (!state.tempPoints.length) {
+        // Step 1 : click center
+        state.tempPoints.push({ cx: clickPos.x, cy: clickPos.y });
+        setStatus('Mode 3 pts — Étape 2/3 : cliquez sur le point de départ (référence d\'angle)');
+        render(); return;
+      }
+      if (state.tempPoints.length === 1) {
+        // Step 2 : click source reference point
+        if (!ensureSelection()) {
+          // The clicked point becomes both the "from" ref AND the selection
+          const src = objectAtCanvas(...worldToCanvasPx((state.rawClickWorld||{x:wx,y:wy}).x, (state.rawClickWorld||{x:wx,y:wy}).y));
+          if (!src || !isPointLike(src)) { setStatus('Cliquez sur un point existant comme référence de départ'); return; }
+          state.selected = [src.id];
+          state.tempPoints.push({ fx: src.x, fy: src.y });
+        } else {
+          state.tempPoints.push({ fx: clickPos.x, fy: clickPos.y });
+        }
+        setStatus('Mode 3 pts — Étape 3/3 : cliquez sur la position d\'arrivée');
+        render(); return;
+      }
+      if (state.tempPoints.length === 2) {
+        // Step 3 : click destination → compute angle
+        const { cx, cy } = state.tempPoints[0];
+        const { fx, fy } = state.tempPoints[1];
+        const tx = clickPos.x, ty = clickPos.y;
+        const angleFrom = Math.atan2(fy - cy, fx - cx);
+        const angleTo   = Math.atan2(ty - cy, tx - cx);
+        let rad = angleTo - angleFrom;
+        const deg = rad * 180 / Math.PI;
+        if (!ensureSelection()) { state.tempPoints = []; return; }
+        applyRotation(cx, cy, rad, null);
+        state.tempPoints = [];
+        setStatus(`Rotation de ${deg.toFixed(1)}° appliquée`);
+      }
+    } else {
+      // ── Mode angle : (sélection) → centre → angle de l'input ──
+      if (!state.tempPoints.length) {
+        if (!ensureSelection()) {
+          setStatus('Étape 1/2 — Cliquez sur un point à faire tourner (ou sélectionnez d\'abord des objets)');
+          render(); return;
+        }
+        state.tempPoints.push({ useSelection: true });
+        setStatus(`Étape 2/2 — Cliquez sur le centre de rotation (${state.selected.length} objet(s) sélectionné(s))`);
+        render(); return;
+      }
+      // Step 2: center click → rotate
+      const angleEl = document.getElementById('rotate-angle');
+      const ccwEl   = document.getElementById('rotate-ccw');
+      let deg = parseFloat(angleEl ? angleEl.value : 45) || 45;
+      if (ccwEl && ccwEl.checked) deg = -deg;
+      const rad = deg * Math.PI / 180;
+      applyRotation(clickPos.x, clickPos.y, rad, existing ? existing.id : null);
+      state.tempPoints = [];
+      setStatus(`Rotation de ${deg}° appliquée`);
+    }
   },
 
   translate(wx, wy) {
@@ -2522,7 +2554,33 @@ function setTool(tool) {
   // Show/hide rotate angle options
   const rotOpts = document.getElementById('rotate-options');
   if (rotOpts) rotOpts.style.display = tool === 'rotate' ? 'flex' : 'none';
+  // Reset rotate tempPoints when switching away
+  if (tool !== 'rotate') state.tempPoints = state.tempPoints; // no-op; cleared by tool switch
 }
+
+// Rotate mode toggle
+(function() {
+  const btnAngle = document.getElementById('rotate-mode-angle');
+  const btn3pts  = document.getElementById('rotate-mode-3pts');
+  const angleCtrl = document.getElementById('rotate-angle-controls');
+  function setRotateMode(mode) {
+    const is3pts = mode === '3pts';
+    btnAngle.style.background = is3pts ? 'transparent' : 'var(--accent,#89b4fa)';
+    btnAngle.style.color      = is3pts ? 'var(--text,#cdd6f4)' : '#1e1e2e';
+    btn3pts.style.background  = is3pts ? 'var(--accent,#89b4fa)' : 'transparent';
+    btn3pts.style.color       = is3pts ? '#1e1e2e' : 'var(--text,#cdd6f4)';
+    btnAngle.classList.toggle('active', !is3pts);
+    btn3pts.classList.toggle('active', is3pts);
+    if (angleCtrl) angleCtrl.style.display = is3pts ? 'none' : 'flex';
+    state.tempPoints = []; // reset on mode change
+    const hint = is3pts
+      ? 'Mode 3 pts — Étape 1/3 : cliquez sur le centre de rotation'
+      : 'Rotation — sélectionnez des objets puis cliquez, ou cliquez directement sur un point';
+    setStatus(hint);
+  }
+  if (btnAngle) btnAngle.addEventListener('click', () => setRotateMode('angle'));
+  if (btn3pts)  btn3pts.addEventListener('click',  () => setRotateMode('3pts'));
+})();
 
 function setStatus(msg) { document.getElementById('status-message').textContent = msg; }
 
