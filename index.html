@@ -261,6 +261,17 @@
         <!-- Barre d'état -->
         <div id="status-bar">
           <span id="status-message">Sélectionner un outil pour commencer</span>
+          <div id="rotate-options" style="display:none;align-items:center;gap:8px;font-size:12px">
+            <label style="display:flex;align-items:center;gap:4px">
+              Angle :
+              <input type="number" id="rotate-angle" value="45" step="1" min="-360" max="360"
+                style="width:56px;padding:1px 4px;background:var(--surface2,#313244);border:1px solid var(--border,#45475a);color:var(--text,#cdd6f4);border-radius:4px;font-size:12px">
+              °
+            </label>
+            <label style="display:flex;align-items:center;gap:3px;cursor:pointer">
+              <input type="checkbox" id="rotate-ccw"> ↺ sens inverse
+            </label>
+          </div>
           <div id="status-right">
             <button id="btn-zoom-in" title="Zoom avant (+)">+</button>
             <span id="zoom-level">100%</span>

@@ -1583,23 +1583,54 @@ const toolHandlers = {
   },
 
   rotate(wx, wy) {
-    const obj = objectAtCanvas(...worldToCanvasPx((state.rawClickWorld||{x:wx,y:wy}).x, (state.rawClickWorld||{x:wx,y:wy}).y));
+    // Center can be: existing point, snap candidate, or free click (raw world coords)
+    const existing = findNearPoint(wx, wy);
+    const snapC = !existing && state.snapUnit > 0 ? (findSnapCandidate(wx, wy) || snapToGrid(wx, wy)) : null;
+    const centerPos = existing ? { x: existing.x, y: existing.y }
+                    : snapC   ? { x: snapC.x, y: snapC.y }
+                               : { x: wx, y: wy };
+
     if (!state.tempPoints.length) {
-      if (obj && isPointLike(obj)) {
-        state.tempPoints.push({ srcId: obj.id });
-        setStatus('Cliquez sur le centre de rotation');
-      } else setStatus('Cliquez sur le point à tourner');
+      // Step 1 : click on source point
+      const src = objectAtCanvas(...worldToCanvasPx((state.rawClickWorld||{x:wx,y:wy}).x, (state.rawClickWorld||{x:wx,y:wy}).y));
+      if (src && isPointLike(src)) {
+        state.tempPoints.push({ srcId: src.id });
+        setStatus('Étape 2/2 — Cliquez sur le centre de rotation (point existant, grille ou espace libre)');
+      } else {
+        setStatus('Étape 1/2 — Cliquez sur le point à faire tourner');
+      }
     } else if (state.tempPoints.length === 1) {
-      if (obj && isPointLike(obj)) {
-        state.tempPoints.push({ centerId: obj.id });
-        showInputDialog('Angle de rotation (degrés)', '45', (val) => {
-          const angle = parseFloat(val);
-          const prev = state.tempPoints;
-          const src = getObj(prev[0].srcId);
-          push({ id: uid(), type: 'rotate', label: nextPointLabel(), color: '#fab387', lineWidth: 2, visible: true, sourceId: prev[0].srcId, centerId: prev[1].centerId, angle, x: src.x, y: src.y });
-          state.tempPoints = []; render();
-        });
-      } else setStatus('Cliquez sur le centre');
+      // Step 2 : click anywhere for center → apply rotation immediately
+      const angleEl = document.getElementById('rotate-angle');
+      const ccwEl   = document.getElementById('rotate-ccw');
+      let deg = parseFloat(angleEl ? angleEl.value : 45) || 45;
+      if (ccwEl && ccwEl.checked) deg = -deg;
+      const rad = deg * Math.PI / 180;
+
+      const centerId = existing ? existing.id : null;
+      const src = getObj(state.tempPoints[0].srcId);
+      if (!src) { state.tempPoints = []; return; }
+
+      // Compute rotated position
+      const cx = centerPos.x, cy = centerPos.y;
+      const dx = src.x - cx, dy = src.y - cy;
+      const rx = cx + dx * Math.cos(rad) - dy * Math.sin(rad);
+      const ry = cy + dx * Math.sin(rad) + dy * Math.cos(rad);
+
+      // Create a 'rotate' type dependent point (keeps relationship) if center is an existing point
+      // Otherwise create a free rotated point
+      if (centerId) {
+        push({ id: uid(), type: 'rotate', label: nextPointLabel(), color: '#fab387', lineWidth: 2, visible: true,
+               sourceId: src.id, centerId, angle: deg, x: rx, y: ry });
+      } else {
+        // Create a center point then a rotate object
+        const cPt = makePoint(cx, cy);
+        push({ id: uid(), type: 'rotate', label: nextPointLabel(), color: '#fab387', lineWidth: 2, visible: true,
+               sourceId: src.id, centerId: cPt.id, angle: deg, x: rx, y: ry });
+      }
+      state.tempPoints = [];
+      setStatus('Rotation appliquée — cliquez à nouveau sur un point pour continuer');
+      render();
     }
   },
 
@@ -2471,12 +2502,15 @@ function setTool(tool) {
     area: 'Cliquez sur un polygone pour mesurer son aire',
     'reflect-line': 'Cliquez sur un point, puis sur l\'axe de symétrie',
     'reflect-point': 'Cliquez sur le point à réfléchir, puis sur le centre',
-    rotate: 'Cliquez sur le point à tourner, puis sur le centre',
+    rotate: 'Étape 1/2 — Cliquez sur le point à faire tourner',
     translate: 'Cliquez sur le point, puis sur les deux extrémités du vecteur',
     text: 'Cliquez pour placer le texte',
     delete: 'Cliquez sur un objet pour le supprimer',
   };
   setStatus(hints[tool] || '');
+  // Show/hide rotate angle options
+  const rotOpts = document.getElementById('rotate-options');
+  if (rotOpts) rotOpts.style.display = tool === 'rotate' ? 'flex' : 'none';
 }
 
 function setStatus(msg) { document.getElementById('status-message').textContent = msg; }
