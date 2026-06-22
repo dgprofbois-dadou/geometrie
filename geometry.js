@@ -1678,7 +1678,10 @@ function findLabelAt(cx, cy) {
   ctx.font = 'bold 12px serif';
   for (let i = state.objects.length - 1; i >= 0; i--) {
     const o = state.objects[i];
-    if (!isPointLike(o) || !o.visible || o.showLabel === false || !o.label) continue;
+    if (!isPointLike(o) || o.showLabel === false || !o.label) continue;
+    // In editor allow invisible objects (e.g. figureGroup members) to have draggable labels too
+    if (!o.visible && state.exerciseMode) continue;
+    if (o.x == null) continue;
     const lpos = getLabelCanvasPos(o);
     if (!lpos) continue;
     const tw = Math.max(ctx.measureText(o.label).width, 10);
@@ -1877,6 +1880,20 @@ canvas.addEventListener('mousedown', e => {
     e.preventDefault(); return;
   }
 
+  // Right-click drag on a label — checked FIRST so it takes priority over rotation
+  if (e.button === 2 && state.tool === 'select') {
+    const labelObj = findLabelAt(pos.x, pos.y);
+    if (labelObj) {
+      state.isDraggingLabel = true;
+      state.labelDragId = labelObj.id;
+      state.labelDragStartCanvas = { x: pos.x, y: pos.y };
+      state.labelDragOrigDx = labelObj.labelDx || 0;
+      state.labelDragOrigDy = labelObj.labelDy || 0;
+      canvas.style.cursor = 'move';
+      e.preventDefault(); return;
+    }
+  }
+
   // Clic droit sur pivot en mode exercice → rotation par pas fixe
   if (e.button === 2 && state.exerciseMode && state.tool === 'select') {
     const rotGroup = state.figureGroups.find(fg => {
@@ -1912,20 +1929,6 @@ canvas.addEventListener('mousedown', e => {
       rotGroup.currentZoneId = zoneId;
       if (state.groupMovedCallback) state.groupMovedCallback(rotGroup.id, zoneId, pivot.x, pivot.y);
       saveUndo(); render();
-      e.preventDefault(); return;
-    }
-  }
-
-  // Right-click drag on a label (select mode, any context)
-  if (e.button === 2 && state.tool === 'select') {
-    const labelObj = findLabelAt(pos.x, pos.y);
-    if (labelObj) {
-      state.isDraggingLabel = true;
-      state.labelDragId = labelObj.id;
-      state.labelDragStartCanvas = { x: pos.x, y: pos.y };
-      state.labelDragOrigDx = labelObj.labelDx || 0;
-      state.labelDragOrigDy = labelObj.labelDy || 0;
-      canvas.style.cursor = 'move';
       e.preventDefault(); return;
     }
   }
