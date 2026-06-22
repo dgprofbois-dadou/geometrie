@@ -1673,7 +1673,7 @@ function getLabelCanvasPos(obj) {
   return { x: c.x + 7 + (obj.labelDx || 0), y: c.y - 4 + (obj.labelDy || 0) };
 }
 
-// Find object whose label is near canvas position (cx, cy)
+// Find object whose label is near canvas position (cx, cy) — generous hit zone
 function findLabelAt(cx, cy) {
   ctx.font = 'bold 12px serif';
   for (let i = state.objects.length - 1; i >= 0; i--) {
@@ -1681,9 +1681,9 @@ function findLabelAt(cx, cy) {
     if (!isPointLike(o) || !o.visible || o.showLabel === false || !o.label) continue;
     const lpos = getLabelCanvasPos(o);
     if (!lpos) continue;
-    const tw = ctx.measureText(o.label).width;
-    const th = 14;
-    if (cx >= lpos.x - 4 && cx <= lpos.x + tw + 4 && cy >= lpos.y - th - 2 && cy <= lpos.y + 4) return o;
+    const tw = Math.max(ctx.measureText(o.label).width, 10);
+    // Hit zone: generous padding of 8px on each side
+    if (cx >= lpos.x - 8 && cx <= lpos.x + tw + 8 && cy >= lpos.y - 22 && cy <= lpos.y + 8) return o;
   }
   return null;
 }
@@ -2186,8 +2186,12 @@ canvas.addEventListener('mousemove', e => {
 
   // Hover
   const labelHovered = state.tool === 'select' && findLabelAt(pos.x, pos.y);
-  if (labelHovered) { canvas.style.cursor = 'move'; }
-  const hit = !labelHovered && objectAtCanvas(pos.x, pos.y, state.tool === 'select');
+  if (labelHovered) {
+    canvas.style.cursor = 'move';
+    if (state.hover !== null) { state.hover = null; render(); }
+    return;
+  }
+  const hit = objectAtCanvas(pos.x, pos.y, state.tool === 'select');
   const newHover = hit ? hit.id : null;
   if (newHover !== state.hover) {
     state.hover = newHover;
