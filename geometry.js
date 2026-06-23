@@ -2007,7 +2007,7 @@ canvas.addEventListener('mousedown', e => {
       canvas.style.cursor = 'nwse-resize';
       e.preventDefault(); return;
     }
-    const zd = findZoneAt(pos.x, pos.y);
+    const zd = e.altKey ? findZoneAt(pos.x, pos.y) : null;
     if (zd) {
       const cx = (zd.x1 + zd.x2) / 2, cy = (zd.y1 + zd.y2) / 2;
       state.isDraggingZone = true;
@@ -2416,7 +2416,7 @@ canvas.addEventListener('mousemove', e => {
   // Hover
   const zoneHandleHovered = findZoneHandleAt(pos.x, pos.y);
   if (zoneHandleHovered) { canvas.style.cursor = 'nwse-resize'; return; }
-  const zoneBodyHovered = findZoneAt(pos.x, pos.y);
+  const zoneBodyHovered = e.altKey && findZoneAt(pos.x, pos.y);
   if (zoneBodyHovered) { canvas.style.cursor = 'grab'; return; }
   const labelHovered = state.tool === 'select' && findLabelAt(pos.x, pos.y);
   if (labelHovered) {
