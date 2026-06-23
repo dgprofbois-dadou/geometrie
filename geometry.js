@@ -1972,7 +1972,7 @@ canvas.addEventListener('mousedown', e => {
   if (e.button === 2 && state.exerciseMode && state.tool === 'select') {
     const rotGroup = state.figureGroups.find(fg => {
       const pivot = state.objects.find(o => o.id === fg.pivotId || o.label === fg.pivotLabel);
-      if (!pivot || !pivot.visible) return false;
+      if (!pivot) return false;
       const c = worldToCanvas(pivot.x, pivot.y);
       return Math.hypot(c.x - pos.x, c.y - pos.y) <= 16;
     });
