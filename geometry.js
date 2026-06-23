@@ -2000,10 +2000,29 @@ canvas.addEventListener('mousedown', e => {
         });
       });
       evalAll();
-      const zone = getGroupZoneAt(pivot.x, pivot.y);
-      const zoneId = zone ? zone.id : null;
-      rotGroup.currentZoneId = zoneId;
-      if (state.groupMovedCallback) state.groupMovedCallback(rotGroup.id, zoneId, pivot.x, pivot.y);
+      // Réévaluation des zones en temps réel (comme pendant le drag)
+      state.zones.forEach(z => { z.state = 'active'; });
+      state.figureGroups.forEach(g => {
+        const gpivot = state.objects.find(o => o.id === g.pivotId || o.label === g.pivotLabel);
+        if (!gpivot) return;
+        const gzone = getGroupZoneAt(gpivot.x, gpivot.y);
+        const gzoneId = gzone ? gzone.id : null;
+        const gInTarget = gzoneId != null && g.targetZoneId != null && gzoneId === g.targetZoneId;
+        let gAlignOk = true;
+        if (gInTarget && g.alignConstraint && g.alignConstraint.axis) {
+          const ac = g.alignConstraint;
+          const refFg = state.figureGroups.find(r => r.id === ac.refGroupId);
+          if (refFg) {
+            const refB = getGroupBounds(refFg), mobB = getGroupBounds(g);
+            const tol = ac.tolerance != null ? ac.tolerance : 0.5;
+            if (ac.axis === 'x') gAlignOk = Math.abs(mobB.minX - refB.minX) <= tol && Math.abs(mobB.maxX - refB.maxX) <= tol;
+            else if (ac.axis === 'y') gAlignOk = Math.abs(mobB.minY - refB.minY) <= tol && Math.abs(mobB.maxY - refB.maxY) <= tol;
+          }
+        }
+        if (gzone && gInTarget) gzone.state = gAlignOk ? 'green' : 'yellow';
+        if (g === rotGroup) { rotGroup.currentZoneId = gzoneId; }
+      });
+      if (state.groupMovedCallback) state.groupMovedCallback(rotGroup.id, rotGroup.currentZoneId, pivot.x, pivot.y);
       saveUndo(); render();
       e.preventDefault(); return;
     }
