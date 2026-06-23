@@ -673,6 +673,20 @@ function drawZones() {
       ctx.moveTo(h.x + 3, h.y); ctx.lineTo(h.x + 3, h.y + 3); ctx.lineTo(h.x, h.y + 3);
       ctx.stroke();
       ctx.restore();
+      // Move handle (editor only, top-centre)
+      const mh = getZoneMoveHandleCanvas(z);
+      ctx.save();
+      ctx.fillStyle = '#a6e3a1';
+      ctx.strokeStyle = '#1e1e2e';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.roundRect(mh.x - 9, mh.y - 9, 18, 18, 3);
+      ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#1e1e2e';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('✥', mh.x, mh.y);
+      ctx.restore();
     }
   });
 
@@ -695,6 +709,21 @@ function drawZones() {
     ctx.fillText('PIÈCES', (p1.x + p2.x) / 2, p1.y - 10);
     ctx.restore();
   }
+}
+
+function getZoneMoveHandleCanvas(z) {
+  const p1 = worldToCanvas(z.x1, z.y2);
+  const p2 = worldToCanvas(z.x2, z.y1);
+  return { x: (p1.x + p2.x) / 2, y: p1.y + 10 }; // top-centre, just inside the zone
+}
+
+function findZoneMoveHandleAt(cx, cy) {
+  if (state.exerciseMode || !state.zonesVisible) return null;
+  for (const z of state.zones) {
+    const h = getZoneMoveHandleCanvas(z);
+    if (Math.abs(cx - h.x) <= 9 && Math.abs(cy - h.y) <= 9) return z;
+  }
+  return null;
 }
 
 function findZoneHandleAt(cx, cy) {
@@ -1998,6 +2027,7 @@ canvas.addEventListener('mousedown', e => {
   }
 
   // Zone resize handle or drag (editor only, left-click)
+  // Ctrl+clic = déplacer la zone ; poignée bas-droite = redimensionner
   if (e.button === 0) {
     const zh = findZoneHandleAt(pos.x, pos.y);
     if (zh) {
@@ -2007,7 +2037,7 @@ canvas.addEventListener('mousedown', e => {
       canvas.style.cursor = 'nwse-resize';
       e.preventDefault(); return;
     }
-    const zd = e.altKey ? findZoneAt(pos.x, pos.y) : null;
+    const zd = findZoneMoveHandleAt(pos.x, pos.y);
     if (zd) {
       const cx = (zd.x1 + zd.x2) / 2, cy = (zd.y1 + zd.y2) / 2;
       state.isDraggingZone = true;
@@ -2416,8 +2446,8 @@ canvas.addEventListener('mousemove', e => {
   // Hover
   const zoneHandleHovered = findZoneHandleAt(pos.x, pos.y);
   if (zoneHandleHovered) { canvas.style.cursor = 'nwse-resize'; return; }
-  const zoneBodyHovered = e.altKey && findZoneAt(pos.x, pos.y);
-  if (zoneBodyHovered) { canvas.style.cursor = 'grab'; return; }
+  const zoneMoveHovered = findZoneMoveHandleAt(pos.x, pos.y);
+  if (zoneMoveHovered) { canvas.style.cursor = 'grab'; return; }
   const labelHovered = state.tool === 'select' && findLabelAt(pos.x, pos.y);
   if (labelHovered) {
     canvas.style.cursor = 'move';
