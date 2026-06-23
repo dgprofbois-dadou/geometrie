@@ -1968,7 +1968,7 @@ canvas.addEventListener('mousedown', e => {
     }
   }
 
-  // Clic droit (ou Shift+clic droit) sur pivot en mode exercice → rotation par pas fixe
+  // Clic droit (ou Ctrl+clic droit) sur pivot en mode exercice → rotation par pas fixe
   if (e.button === 2 && state.exerciseMode && state.tool === 'select') {
     const rotGroup = state.figureGroups.find(fg => {
       const pivot = state.objects.find(o => o.id === fg.pivotId || o.label === fg.pivotLabel);
@@ -1979,8 +1979,8 @@ canvas.addEventListener('mousedown', e => {
     if (rotGroup) {
       const pivot = state.objects.find(o => o.id === rotGroup.pivotId || o.label === rotGroup.pivotLabel);
       const stepDeg = rotGroup.rotationStep != null ? rotGroup.rotationStep : 90;
-      // Shift+clic droit → sens inverse
-      const sign = e.shiftKey ? -1 : 1;
+      // Ctrl+clic droit → sens inverse
+      const sign = e.ctrlKey ? -1 : 1;
       const delta = sign * stepDeg * Math.PI / 180;
       const cx = pivot.x, cy = pivot.y;
       const movedPtIds = new Set();
