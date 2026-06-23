@@ -1347,7 +1347,8 @@ function addQuestion() {
     pointsPerCorrect: 1,
     geoState: [],
     roleMap: {},
-    figureGroups: []
+    figureGroups: [],
+    zoneCustomSizes: {}
   };
   exerciseData.questions.push(q);
   selectQuestion(q.id);
@@ -1383,6 +1384,7 @@ function selectQuestion(id) {
     // Show zones on canvas if active
     if (q.activeZones && q.activeZones.size > 0) {
       geoApp.defineZones([...q.activeZones], 8, 6, 0.5);
+      geoApp.applyZoneOverrides(q.zoneCustomSizes);
     } else {
       geoApp.hideZones();
     }
@@ -1507,7 +1509,7 @@ function renderQuestionEditor() {
       if (this.checked) q.activeZones.add(this.value);
       else q.activeZones.delete(this.value);
       // Update canvas zones immediately
-      if (q.activeZones.size > 0) geoApp.defineZones([...q.activeZones], 8, 6, 0.5);
+      if (q.activeZones.size > 0) { geoApp.defineZones([...q.activeZones], 8, 6, 0.5); geoApp.applyZoneOverrides(q.zoneCustomSizes); }
       else geoApp.hideZones();
     });
   });
@@ -1569,6 +1571,7 @@ function renderQuestionEditor() {
     wireFigureGroupDelBtns(q);
     wireFigureGroupAlignControls(q);
     geoApp.defineZones(activeZoneIds, 8, 6, 0.5);
+    geoApp.applyZoneOverrides(q.zoneCustomSizes);
     syncFigureGroupsToCanvas(q);
   });
 
@@ -1838,6 +1841,14 @@ function syncRefObjPanel() {
 }
 
 // Sync panneau droite quand un objet est supprimé depuis le canvas
+geoApp.onZoneResized(function(zoneId, x1, y1, x2, y2) {
+  const q = currentQuestion();
+  if (!q) return;
+  if (!q.zoneCustomSizes) q.zoneCustomSizes = {};
+  q.zoneCustomSizes[zoneId] = { x1, y1, x2, y2 };
+  scheduleSave();
+});
+
 geoApp.onPivotMoved(function(groupId, newX, newY) {
   const q = currentQuestion();
   if (!q) return;
@@ -1954,6 +1965,7 @@ function buildExerciseData() {
         rotationStep: fg.rotationStep != null ? fg.rotationStep : 90,
         startAngle: fg.startAngle || 0
       })),
+      zoneCustomSizes: q.zoneCustomSizes || {},
       // Complete scene state: all objects + their roles embedded
       geoState: annotatedGeoState,
       givenIds: [...givenIds],
@@ -2154,6 +2166,7 @@ function generateJS(data) {
     geoApp.clearFigureGroups();
     if (q.activeZones && q.activeZones.length > 0) {
       geoApp.defineZones(q.activeZones, 8, 6, 0.5);
+      if (q.zoneCustomSizes) geoApp.applyZoneOverrides(q.zoneCustomSizes);
     } else {
       geoApp.hideZones();
     }
@@ -2434,7 +2447,8 @@ function serializeState() {
       pointsPerCorrect: q.pointsPerCorrect ?? 1,
       geoState: q.geoState || [],
       roleMap: q.roleMap || {},
-      figureGroups: q.figureGroups || []
+      figureGroups: q.figureGroups || [],
+      zoneCustomSizes: q.zoneCustomSizes || {}
     })),
     currentQuestionId,
     nextObjId
@@ -2471,7 +2485,8 @@ function deserializeState(data) {
     pointsPerCorrect: q.pointsPerCorrect ?? 1,
     geoState: q.geoState || [],
     roleMap: q.roleMap || {},
-    figureGroups: q.figureGroups || []
+    figureGroups: q.figureGroups || [],
+    zoneCustomSizes: q.zoneCustomSizes || {}
   }));
 
   questionCounter = exerciseData.questions.length;

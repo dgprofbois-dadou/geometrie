@@ -48,6 +48,10 @@ const state = {
   labelDragStartCanvas: null,// {x,y} canvas pos at drag start
   labelDragOrigDx: 0,        // original labelDx at drag start
   labelDragOrigDy: 0,        // original labelDy at drag start
+  isResizingZone: false,     // dragging a zone resize handle
+  resizeZoneId: null,
+  resizeZoneCenter: null,
+  zoneResizedCallback: null,
   // label counter
   labelCounters: { point: 0, line: 0, circle: 0, polygon: 0, text: 0, angle: 0, measure: 0 },
   editingGroupId: null,        // type:group currently being edited
@@ -650,6 +654,23 @@ function drawZones() {
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(z.label, cx, cy);
     ctx.restore();
+    // Resize handle (editor only, bottom-right corner)
+    if (!state.exerciseMode) {
+      const h = worldToCanvas(z.x2, z.y1);
+      ctx.save();
+      ctx.fillStyle = '#89b4fa';
+      ctx.strokeStyle = '#1e1e2e';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.roundRect(h.x - 6, h.y - 6, 12, 12, 3);
+      ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = '#1e1e2e'; ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(h.x - 2, h.y - 2); ctx.lineTo(h.x + 3, h.y + 3);
+      ctx.moveTo(h.x + 3, h.y); ctx.lineTo(h.x + 3, h.y + 3); ctx.lineTo(h.x, h.y + 3);
+      ctx.stroke();
+      ctx.restore();
+    }
   });
 
   // Draw palette area label if there are figure groups
@@ -671,6 +692,15 @@ function drawZones() {
     ctx.fillText('PIÈCES', (p1.x + p2.x) / 2, p1.y - 10);
     ctx.restore();
   }
+}
+
+function findZoneHandleAt(cx, cy) {
+  if (state.exerciseMode || !state.zonesVisible) return null;
+  for (const z of state.zones) {
+    const h = worldToCanvas(z.x2, z.y1);
+    if (Math.abs(cx - h.x) <= 8 && Math.abs(cy - h.y) <= 8) return z;
+  }
+  return null;
 }
 
 function drawFigureGroupPivots() {
@@ -1954,6 +1984,18 @@ canvas.addEventListener('mousedown', e => {
     e.preventDefault(); return;
   }
 
+  // Zone resize handle (editor only, left-click)
+  if (e.button === 0) {
+    const zh = findZoneHandleAt(pos.x, pos.y);
+    if (zh) {
+      state.isResizingZone = true;
+      state.resizeZoneId = zh.id;
+      state.resizeZoneCenter = { x: (zh.x1 + zh.x2) / 2, y: (zh.y1 + zh.y2) / 2 };
+      canvas.style.cursor = 'nwse-resize';
+      e.preventDefault(); return;
+    }
+  }
+
   // Right-click drag on a label — checked FIRST so it takes priority over rotation
   if (e.button === 2 && state.tool === 'select') {
     const labelObj = findLabelAt(pos.x, pos.y);
@@ -2183,6 +2225,19 @@ canvas.addEventListener('mousemove', e => {
     render(); return;
   }
 
+  if (state.isResizingZone) {
+    const z = state.zones.find(z => z.id === state.resizeZoneId);
+    if (z) {
+      const cx = state.resizeZoneCenter.x, cy = state.resizeZoneCenter.y;
+      const hw = Math.max(0.5, world.x - cx);
+      const hh = Math.max(0.5, cy - world.y);
+      z.x1 = cx - hw; z.x2 = cx + hw;
+      z.y1 = cy - hh; z.y2 = cy + hh;
+      render();
+    }
+    return;
+  }
+
   if (state.isLasso && state.lassoStart) {
     state.lassoEnd = { cx: pos.x, cy: pos.y };
     render(); return;
@@ -2324,6 +2379,8 @@ canvas.addEventListener('mousemove', e => {
   }
 
   // Hover
+  const zoneHandleHovered = findZoneHandleAt(pos.x, pos.y);
+  if (zoneHandleHovered) { canvas.style.cursor = 'nwse-resize'; return; }
   const labelHovered = state.tool === 'select' && findLabelAt(pos.x, pos.y);
   if (labelHovered) {
     canvas.style.cursor = 'move';
@@ -2354,6 +2411,16 @@ canvas.addEventListener('mousemove', e => {
 
 canvas.addEventListener('mouseup', e => {
   if (state.isPanning) { state.isPanning = false; canvas.style.cursor = (state.tool === 'select' || state.tool === 'lasso') ? 'default' : 'crosshair'; }
+
+  if (state.isResizingZone) {
+    state.isResizingZone = false;
+    const z = state.zones.find(z => z.id === state.resizeZoneId);
+    state.resizeZoneId = null;
+    state.resizeZoneCenter = null;
+    canvas.style.cursor = 'default';
+    if (z && state.zoneResizedCallback) state.zoneResizedCallback(z.id, z.x1, z.y1, z.x2, z.y2);
+    render(); return;
+  }
 
   if (state.isDraggingLabel) {
     state.isDraggingLabel = false;
@@ -3152,6 +3219,17 @@ const geoApp = {
 
   onGroupMoved(callback) {
     state.groupMovedCallback = callback;
+  },
+
+  onZoneResized(cb) { state.zoneResizedCallback = cb; },
+
+  applyZoneOverrides(overrides) {
+    if (!overrides) return;
+    state.zones.forEach(z => {
+      const ov = overrides[z.id];
+      if (ov) { z.x1 = ov.x1; z.y1 = ov.y1; z.x2 = ov.x2; z.y2 = ov.y2; }
+    });
+    render();
   },
 
   onPivotMoved(cb) { state._onPivotMovedCb = cb; },
