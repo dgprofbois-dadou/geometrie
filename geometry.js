@@ -51,6 +51,9 @@ const state = {
   isResizingZone: false,     // dragging a zone resize handle
   resizeZoneId: null,
   resizeZoneCenter: null,
+  isDraggingZone: false,     // dragging a zone to reposition it
+  dragZoneId: null,
+  dragZoneOffset: null,      // {dx, dy} world offset from zone center to click point
   zoneResizedCallback: null,
   // label counter
   labelCounters: { point: 0, line: 0, circle: 0, polygon: 0, text: 0, angle: 0, measure: 0 },
@@ -699,6 +702,16 @@ function findZoneHandleAt(cx, cy) {
   for (const z of state.zones) {
     const h = worldToCanvas(z.x2, z.y1);
     if (Math.abs(cx - h.x) <= 8 && Math.abs(cy - h.y) <= 8) return z;
+  }
+  return null;
+}
+
+function findZoneAt(cx, cy) {
+  if (state.exerciseMode || !state.zonesVisible) return null;
+  for (const z of state.zones) {
+    const p1 = worldToCanvas(z.x1, z.y2);
+    const p2 = worldToCanvas(z.x2, z.y1);
+    if (cx >= p1.x && cx <= p2.x && cy >= p1.y && cy <= p2.y) return z;
   }
   return null;
 }
@@ -1984,7 +1997,7 @@ canvas.addEventListener('mousedown', e => {
     e.preventDefault(); return;
   }
 
-  // Zone resize handle (editor only, left-click)
+  // Zone resize handle or drag (editor only, left-click)
   if (e.button === 0) {
     const zh = findZoneHandleAt(pos.x, pos.y);
     if (zh) {
@@ -1992,6 +2005,15 @@ canvas.addEventListener('mousedown', e => {
       state.resizeZoneId = zh.id;
       state.resizeZoneCenter = { x: (zh.x1 + zh.x2) / 2, y: (zh.y1 + zh.y2) / 2 };
       canvas.style.cursor = 'nwse-resize';
+      e.preventDefault(); return;
+    }
+    const zd = findZoneAt(pos.x, pos.y);
+    if (zd) {
+      const cx = (zd.x1 + zd.x2) / 2, cy = (zd.y1 + zd.y2) / 2;
+      state.isDraggingZone = true;
+      state.dragZoneId = zd.id;
+      state.dragZoneOffset = { dx: world.x - cx, dy: world.y - cy };
+      canvas.style.cursor = 'grabbing';
       e.preventDefault(); return;
     }
   }
@@ -2238,6 +2260,19 @@ canvas.addEventListener('mousemove', e => {
     return;
   }
 
+  if (state.isDraggingZone) {
+    const z = state.zones.find(z => z.id === state.dragZoneId);
+    if (z) {
+      const hw = (z.x2 - z.x1) / 2, hh = (z.y2 - z.y1) / 2;
+      const newCx = world.x - state.dragZoneOffset.dx;
+      const newCy = world.y - state.dragZoneOffset.dy;
+      z.x1 = newCx - hw; z.x2 = newCx + hw;
+      z.y1 = newCy - hh; z.y2 = newCy + hh;
+      render();
+    }
+    return;
+  }
+
   if (state.isLasso && state.lassoStart) {
     state.lassoEnd = { cx: pos.x, cy: pos.y };
     render(); return;
@@ -2381,6 +2416,8 @@ canvas.addEventListener('mousemove', e => {
   // Hover
   const zoneHandleHovered = findZoneHandleAt(pos.x, pos.y);
   if (zoneHandleHovered) { canvas.style.cursor = 'nwse-resize'; return; }
+  const zoneBodyHovered = findZoneAt(pos.x, pos.y);
+  if (zoneBodyHovered) { canvas.style.cursor = 'grab'; return; }
   const labelHovered = state.tool === 'select' && findLabelAt(pos.x, pos.y);
   if (labelHovered) {
     canvas.style.cursor = 'move';
@@ -2417,6 +2454,16 @@ canvas.addEventListener('mouseup', e => {
     const z = state.zones.find(z => z.id === state.resizeZoneId);
     state.resizeZoneId = null;
     state.resizeZoneCenter = null;
+    canvas.style.cursor = 'default';
+    if (z && state.zoneResizedCallback) state.zoneResizedCallback(z.id, z.x1, z.y1, z.x2, z.y2);
+    render(); return;
+  }
+
+  if (state.isDraggingZone) {
+    state.isDraggingZone = false;
+    const z = state.zones.find(z => z.id === state.dragZoneId);
+    state.dragZoneId = null;
+    state.dragZoneOffset = null;
     canvas.style.cursor = 'default';
     if (z && state.zoneResizedCallback) state.zoneResizedCallback(z.id, z.x1, z.y1, z.x2, z.y2);
     render(); return;
