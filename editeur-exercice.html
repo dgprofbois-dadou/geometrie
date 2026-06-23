@@ -963,6 +963,7 @@
       <div class="collapsible-body" id="props-body" style="max-height:400px">
       <div id="obj-props-body-wrap">
       <div id="obj-props-body">
+        <div id="op-coords" style="display:none;border-bottom:1px solid var(--border);padding-bottom:6px;margin-bottom:4px"></div>
         <div class="form-row">
           <label>Nom</label>
           <input type="text" id="op-label" style="width:90px">
@@ -1257,9 +1258,48 @@ document.getElementById('opt-zoom').addEventListener('change', function() {
 // ── Object properties panel ───────────────────────
 let _selectedObjId = null;
 
+function buildCoordPts(obj) {
+  const pts = [];
+  if (obj.x != null) {
+    pts.push({ label: '', xId: 'op-px', yId: 'op-py', ptObj: obj });
+  } else {
+    const p1 = obj.p1id ? state.objects.find(o => o.id === obj.p1id) : null;
+    const p2 = obj.p2id ? state.objects.find(o => o.id === obj.p2id) : null;
+    const ctr = obj.centerId ? state.objects.find(o => o.id === obj.centerId) : null;
+    if (p1 && p1.x != null) pts.push({ label: p1.label, xId: 'op-pp1x', yId: 'op-pp1y', ptObj: p1 });
+    if (p2 && p2.x != null) pts.push({ label: p2.label, xId: 'op-pp2x', yId: 'op-pp2y', ptObj: p2 });
+    if (ctr && ctr.x != null) pts.push({ label: ctr.label, xId: 'op-pcx', yId: 'op-pcy', ptObj: ctr });
+  }
+  return pts;
+}
+
 function showObjProps(obj) {
   const panel = document.getElementById('obj-props-panel');
   panel.style.display = 'block';
+  // Coordinates section
+  const coordDiv = document.getElementById('op-coords');
+  const coordPts = buildCoordPts(obj);
+  if (coordPts.length > 0) {
+    coordDiv.style.display = '';
+    coordDiv.innerHTML = coordPts.map(({ label, xId, yId, ptObj }) => {
+      const ro = ptObj.type !== 'point' ? ' readonly' : '';
+      const dim = ptObj.type !== 'point' ? ' style="opacity:0.55"' : '';
+      return (label ? `<div class="form-row"${dim}><label style="font-weight:700">${label}</label></div>` : '') +
+        `<div class="form-row"${dim}><label>x</label><input type="number" id="${xId}" step="0.5" value="${ptObj.x.toFixed(4)}" style="width:75px"${ro}></div>` +
+        `<div class="form-row"${dim}><label>y</label><input type="number" id="${yId}" step="0.5" value="${ptObj.y.toFixed(4)}" style="width:75px"${ro}></div>`;
+    }).join('');
+    // Wire coordinate inputs
+    coordPts.forEach(({ xId, yId, ptObj }) => {
+      if (ptObj.type !== 'point') return;
+      const ex = coordDiv.querySelector('#' + xId);
+      const ey = coordDiv.querySelector('#' + yId);
+      if (ex) ex.addEventListener('input', e => { ptObj.x = parseFloat(e.target.value) || 0; evalAll(); render(); });
+      if (ey) ey.addEventListener('input', e => { ptObj.y = parseFloat(e.target.value) || 0; evalAll(); render(); });
+    });
+  } else {
+    coordDiv.style.display = 'none';
+    coordDiv.innerHTML = '';
+  }
   const role = getRole(obj.id);
   document.getElementById('op-label').value = obj.label || '';
   document.getElementById('op-color').value = (obj.color && obj.color[0] === '#') ? obj.color : '#f38ba8';
@@ -1305,7 +1345,18 @@ setInterval(() => {
     if (_selectedObjId !== obj.id) {
       _selectedObjId = obj.id;
       showObjProps(obj);
-      syncRefObjPanel(); // highlight in list
+      syncRefObjPanel();
+    } else {
+      // Update coordinate inputs live (object may have been dragged)
+      const coordDiv = document.getElementById('op-coords');
+      if (coordDiv && coordDiv.style.display !== 'none') {
+        buildCoordPts(obj).forEach(({ xId, yId, ptObj }) => {
+          const ex = coordDiv.querySelector('#' + xId);
+          const ey = coordDiv.querySelector('#' + yId);
+          if (ex && document.activeElement !== ex) ex.value = ptObj.x.toFixed(4);
+          if (ey && document.activeElement !== ey) ey.value = ptObj.y.toFixed(4);
+        });
+      }
     }
   } else if (_selectedObjId !== null) {
     _selectedObjId = null; hideObjProps();

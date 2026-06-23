@@ -2919,10 +2919,26 @@ function showProperties(obj) {
   if (obj.type === 'area-measure' && obj.value != null)
     html += `<div class="prop-measure">${obj.value.toFixed(4)}</div>`;
 
-  // Coordinates
-  if (isPointLike(obj))
-    html += `<div class="prop-row"><label>x</label><input type="number" id="px" step="0.5" value="${obj.x.toFixed(4)}"></div>
-             <div class="prop-row"><label>y</label><input type="number" id="py" step="0.5" value="${obj.y.toFixed(4)}"></div>`;
+  // Coordinates — build list of {label, xId, yId, ptObj} to render
+  const _coordPts = [];
+  if (isPointLike(obj) && obj.x != null) {
+    _coordPts.push({ label: '', xId: 'px', yId: 'py', ptObj: obj });
+  } else {
+    const _p1 = obj.p1id ? state.objects.find(o => o.id === obj.p1id) : null;
+    const _p2 = obj.p2id ? state.objects.find(o => o.id === obj.p2id) : null;
+    const _ctr = obj.centerId ? state.objects.find(o => o.id === obj.centerId) : null;
+    if (_p1 && _p1.x != null) _coordPts.push({ label: _p1.label, xId: 'pp1x', yId: 'pp1y', ptObj: _p1 });
+    if (_p2 && _p2.x != null) _coordPts.push({ label: _p2.label, xId: 'pp2x', yId: 'pp2y', ptObj: _p2 });
+    if (_ctr && _ctr.x != null) _coordPts.push({ label: _ctr.label, xId: 'pcx', yId: 'pcy', ptObj: _ctr });
+  }
+  _coordPts.forEach(({ label, xId, yId, ptObj }) => {
+    const fixed = ptObj.type !== 'point';
+    const ro = fixed ? ' readonly' : '';
+    const dimmed = fixed ? ' style="opacity:0.55"' : '';
+    if (label) html += `<div class="prop-row"${dimmed}><label style="font-weight:700">${label}</label></div>`;
+    html += `<div class="prop-row"${dimmed}><label>x</label><input type="number" id="${xId}" step="0.5" value="${ptObj.x.toFixed(4)}"${ro}></div>`;
+    html += `<div class="prop-row"${dimmed}><label>y</label><input type="number" id="${yId}" step="0.5" value="${ptObj.y.toFixed(4)}"${ro}></div>`;
+  });
 
   // Radius
   if (obj.type === 'circle' && obj.r != null)
@@ -2958,8 +2974,11 @@ function showProperties(obj) {
 
   // Wire up inputs
   const bind = (id, cb) => { const el = content.querySelector('#' + id); if (el) el.addEventListener('input', cb); };
-  bind('px', e => { if (obj.type === 'point') { obj.x = parseFloat(e.target.value) || 0; evalAll(); render(); updateAlgebra(); }});
-  bind('py', e => { if (obj.type === 'point') { obj.y = parseFloat(e.target.value) || 0; evalAll(); render(); updateAlgebra(); }});
+  _coordPts.forEach(({ xId, yId, ptObj }) => {
+    if (ptObj.type !== 'point') return; // readonly — derived points can't be moved directly
+    bind(xId, e => { ptObj.x = parseFloat(e.target.value) || 0; evalAll(); render(); updateAlgebra(); });
+    bind(yId, e => { ptObj.y = parseFloat(e.target.value) || 0; evalAll(); render(); updateAlgebra(); });
+  });
   bind('pr', e => { if (obj.type === 'circle' && !obj.radiusPointId) { obj.r = parseFloat(e.target.value) || 1; render(); }});
   bind('ptxt', e => { if (obj.type === 'text') { obj.text = e.target.value; render(); }});
   bind('pang', e => { if (obj.type === 'rotate') { obj.angle = parseFloat(e.target.value) || 0; evalAll(); render(); updateAlgebra(); }});
@@ -2981,9 +3000,15 @@ function showProperties(obj) {
 function updatePropertiesLive(obj) {
   const panel = document.getElementById('properties-panel');
   if (panel.classList.contains('hidden')) return;
-  const px = panel.querySelector('#px'), py = panel.querySelector('#py');
-  if (px) px.value = obj.x.toFixed(4);
-  if (py) py.value = obj.y.toFixed(4);
+  // Update all coordinate inputs that may be shown
+  const setField = (id, val) => { const el = panel.querySelector('#' + id); if (el) el.value = val.toFixed(4); };
+  if (obj.x != null) { setField('px', obj.x); setField('py', obj.y); }
+  const p1 = obj.p1id ? state.objects.find(o => o.id === obj.p1id) : null;
+  const p2 = obj.p2id ? state.objects.find(o => o.id === obj.p2id) : null;
+  const ctr = obj.centerId ? state.objects.find(o => o.id === obj.centerId) : null;
+  if (p1 && p1.x != null) { setField('pp1x', p1.x); setField('pp1y', p1.y); }
+  if (p2 && p2.x != null) { setField('pp2x', p2.x); setField('pp2y', p2.y); }
+  if (ctr && ctr.x != null) { setField('pcx', ctr.x); setField('pcy', ctr.y); }
   const desc = panel.querySelector('.prop-measure');
   if (desc) {
     if (obj.type === 'angle-measure' && obj.value != null) desc.textContent = obj.value.toFixed(2) + '°';
