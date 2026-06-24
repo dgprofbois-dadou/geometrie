@@ -1453,6 +1453,30 @@ function drawTempPreview() {
 
   // Preview line to mouse
   // Draw snap indicator
+  // Permanent snap markers on segments when a drawing tool is active
+  const isDrawTool = state.tool !== 'select' && state.tool !== 'lasso' && state.tool !== 'pan' && state.tool !== 'rotate';
+  if (isDrawTool) {
+    state.objects.forEach(o => {
+      if (o.type !== 'segment' || !o.visible) return;
+      const p1 = getPoint(o.p1id), p2 = getPoint(o.p2id);
+      if (!p1 || !p2) return;
+      ctx.save();
+      // Midpoint — diamond ◆
+      const mc = worldToCanvas((p1.x + p2.x) / 2, (p1.y + p2.y) / 2);
+      ctx.strokeStyle = 'rgba(137,220,235,0.7)'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(mc.x, mc.y - 5); ctx.lineTo(mc.x + 5, mc.y);
+      ctx.lineTo(mc.x, mc.y + 5); ctx.lineTo(mc.x - 5, mc.y); ctx.closePath(); ctx.stroke();
+      // Quarter points — small triangles
+      ctx.strokeStyle = 'rgba(203,166,247,0.65)'; ctx.lineWidth = 1.5;
+      for (const t of [0.25, 0.75]) {
+        const qc = worldToCanvas(p1.x + t * (p2.x - p1.x), p1.y + t * (p2.y - p1.y));
+        ctx.beginPath(); ctx.moveTo(qc.x - 4, qc.y + 3); ctx.lineTo(qc.x, qc.y - 4); ctx.lineTo(qc.x + 4, qc.y + 3); ctx.closePath(); ctx.stroke();
+      }
+      ctx.restore();
+    });
+  }
+
+  // Snap candidate active indicator
   if (state.snapCandidate && state.mouseWorld) {
     const sc = state.snapCandidate;
     const c = worldToCanvas(sc.x, sc.y);
@@ -1463,7 +1487,11 @@ function drawTempPreview() {
       ctx.beginPath();
       ctx.moveTo(c.x - 7, c.y); ctx.lineTo(c.x + 7, c.y);
       ctx.moveTo(c.x, c.y - 7); ctx.lineTo(c.x, c.y + 7);
-      ctx.strokeStyle = '#89dceb'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.strokeStyle = '#89dceb'; ctx.lineWidth = 2.5; ctx.stroke();
+    } else if (sc.type === 'quarter') {
+      ctx.beginPath();
+      ctx.moveTo(c.x - 7, c.y + 5); ctx.lineTo(c.x, c.y - 6); ctx.lineTo(c.x + 7, c.y + 5); ctx.closePath();
+      ctx.strokeStyle = '#cba6f7'; ctx.lineWidth = 2.5; ctx.stroke();
     } else if (sc.type === 'perpendicular') {
       ctx.beginPath();
       ctx.moveTo(c.x - 6, c.y - 6); ctx.lineTo(c.x + 6, c.y + 6);
@@ -1962,9 +1990,9 @@ function findNearPoint(wx, wy) {
   return null;
 }
 
-// Returns the best snap candidate near (wx,wy): existing point > midpoint > perpendicular foot
+// Returns the best snap candidate near (wx,wy): existing point > midpoint > quarter > perpendicular foot
 function findSnapCandidate(wx, wy) {
-  const POINT_PX = 14, MID_PX = 12, PERP_PX = 10;
+  const POINT_PX = 14, MID_PX = 12, QUARTER_PX = 11, PERP_PX = 10;
   const cPos = worldToCanvas(wx, wy);
   let best = null, bestDist = Infinity;
 
@@ -1977,15 +2005,21 @@ function findSnapCandidate(wx, wy) {
   }
   if (best) return best;
 
-  // 2. Midpoints of visible segments
+  // 2. Midpoints and quarter points of visible segments
   for (const o of state.objects) {
     if (o.type !== 'segment' || !o.visible) continue;
     const p1 = getPoint(o.p1id), p2 = getPoint(o.p2id);
     if (!p1 || !p2) continue;
     const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
-    const c = worldToCanvas(mx, my);
-    const d = Math.hypot(cPos.x - c.x, cPos.y - c.y);
-    if (d < MID_PX && d < bestDist) { bestDist = d; best = { x: mx, y: my, type: 'midpoint' }; }
+    const cm = worldToCanvas(mx, my);
+    const dm = Math.hypot(cPos.x - cm.x, cPos.y - cm.y);
+    if (dm < MID_PX && dm < bestDist) { bestDist = dm; best = { x: mx, y: my, type: 'midpoint' }; }
+    for (const t of [0.25, 0.75]) {
+      const qx = p1.x + t * (p2.x - p1.x), qy = p1.y + t * (p2.y - p1.y);
+      const cq = worldToCanvas(qx, qy);
+      const dq = Math.hypot(cPos.x - cq.x, cPos.y - cq.y);
+      if (dq < QUARTER_PX && dq < bestDist) { bestDist = dq; best = { x: qx, y: qy, type: 'quarter' }; }
+    }
   }
   if (best) return best;
 
@@ -1998,7 +2032,6 @@ function findSnapCandidate(wx, wy) {
     const len2 = dx * dx + dy * dy;
     if (len2 < 1e-10) continue;
     const t = ((wx - p1.x) * dx + (wy - p1.y) * dy) / len2;
-    // For segments, clamp to [0,1]; for lines/rays keep unbounded
     const tc = (o.type === 'segment') ? Math.max(0, Math.min(1, t)) : t;
     const fx = p1.x + tc * dx, fy = p1.y + tc * dy;
     const c = worldToCanvas(fx, fy);
@@ -2599,7 +2632,7 @@ canvas.addEventListener('mousemove', e => {
   } else {
     state.snapCandidate = null;
   }
-  if (state.tempPoints.length || state.snapCandidate) render();
+  if (state.tempPoints.length || state.snapCandidate || isDrawingTool) render();
 });
 
 canvas.addEventListener('mouseup', e => {
