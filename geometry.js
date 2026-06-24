@@ -2625,9 +2625,11 @@ canvas.addEventListener('mousemove', e => {
   document.getElementById('coords-display').textContent =
     `x = ${world.x.toFixed(2)}, y = ${world.y.toFixed(2)}`;
 
-  // Compute snap candidate when a drawing tool is active
+  // Compute snap candidate when a drawing tool is active.
+  // Object snapping (points, midpoints, quarters, perpendicular) always active.
+  // Grid snapping only when snapUnit > 0.
   const isDrawingTool = state.tool !== 'select' && state.tool !== 'lasso' && state.tool !== 'pan';
-  if (isDrawingTool && state.snapUnit > 0) {
+  if (isDrawingTool) {
     state.snapCandidate = findSnapCandidate(world.x, world.y);
   } else {
     state.snapCandidate = null;
