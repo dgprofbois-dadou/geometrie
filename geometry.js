@@ -1508,6 +1508,22 @@ function drawTempPreview() {
     ctx.beginPath(); ctx.moveTo(c1.x, c1.y); ctx.lineTo(c2.x, c2.y);
     ctx.strokeStyle = 'rgba(255,220,100,0.5)';
     ctx.lineWidth = 1.5; ctx.setLineDash([5, 4]); ctx.stroke(); ctx.setLineDash([]);
+
+    // Snap markers on in-progress segment (milieu ◆ et quarts ▲)
+    const wx1 = last.x, wy1 = last.y, wx2 = snapW.x, wy2 = snapW.y;
+    ctx.save();
+    // Midpoint — diamond
+    const mc = worldToCanvas((wx1 + wx2) / 2, (wy1 + wy2) / 2);
+    ctx.strokeStyle = 'rgba(137,220,235,0.85)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(mc.x, mc.y - 6); ctx.lineTo(mc.x + 6, mc.y);
+    ctx.lineTo(mc.x, mc.y + 6); ctx.lineTo(mc.x - 6, mc.y); ctx.closePath(); ctx.stroke();
+    // Quarter points — triangles
+    ctx.strokeStyle = 'rgba(203,166,247,0.80)'; ctx.lineWidth = 1.5;
+    for (const t of [0.25, 0.75]) {
+      const qc = worldToCanvas(wx1 + t * (wx2 - wx1), wy1 + t * (wy2 - wy1));
+      ctx.beginPath(); ctx.moveTo(qc.x - 5, qc.y + 4); ctx.lineTo(qc.x, qc.y - 5); ctx.lineTo(qc.x + 5, qc.y + 4); ctx.closePath(); ctx.stroke();
+    }
+    ctx.restore();
   }
 
   if (state.tool === 'polygon' && state.mouseWorld && pts.length >= 2) {
