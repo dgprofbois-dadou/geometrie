@@ -2628,8 +2628,7 @@ canvas.addEventListener('mousemove', e => {
 
   // Detect hovered line-like objects for snap markers (always active)
   const HOVER_LINE_PX = 12;
-  const cPos2 = { x: pos.x, y: pos.y };
-  const prevHover = (state.snapHoverObjs || []).map(o => o.id).join(',');
+  const prevSnapHover = (state.snapHoverObjs || []).map(o => o.id).join(',');
   state.snapHoverObjs = state.objects.filter(o => {
     if (!isLineLike(o) || !o.visible) return false;
     const p1 = getPoint(o.p1id), p2 = getPoint(o.p2id);
@@ -2638,12 +2637,12 @@ canvas.addEventListener('mousemove', e => {
     const dx = c2.x - c1.x, dy = c2.y - c1.y;
     const len2 = dx * dx + dy * dy;
     if (len2 < 1) return false;
-    const t = ((cPos2.x - c1.x) * dx + (cPos2.y - c1.y) * dy) / len2;
+    const t = ((pos.x - c1.x) * dx + (pos.y - c1.y) * dy) / len2;
     const tc = (o.type === 'segment') ? Math.max(0, Math.min(1, t)) : t;
     const fx = c1.x + tc * dx, fy = c1.y + tc * dy;
-    return Math.hypot(cPos2.x - fx, cPos2.y - fy) < HOVER_LINE_PX;
+    return Math.hypot(pos.x - fx, pos.y - fy) < HOVER_LINE_PX;
   });
-  const newHover = (state.snapHoverObjs || []).map(o => o.id).join(',');
+  const curSnapHover = (state.snapHoverObjs || []).map(o => o.id).join(',');
 
   // Compute snap candidate when a drawing tool is active.
   // Object snapping (points, midpoints, quarters, perpendicular) always active.
@@ -2654,7 +2653,7 @@ canvas.addEventListener('mousemove', e => {
   } else {
     state.snapCandidate = null;
   }
-  if (state.tempPoints.length || state.snapCandidate || isDrawingTool || prevHover !== newHover) render();
+  if (state.tempPoints.length || state.snapCandidate || isDrawingTool || prevSnapHover !== curSnapHover) render();
 });
 
 canvas.addEventListener('mouseup', e => {
