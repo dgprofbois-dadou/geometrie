@@ -56,6 +56,7 @@ const state = {
   dragZoneOffset: null,      // {dx, dy} world offset from zone center to click point
   zoneResizedCallback: null,
   zoneSnapGuides: [],        // [{x1,y1,x2,y2}] canvas lines drawn during zone drag/resize
+  snapHoverObjs: [],         // line-like objects the mouse is currently hovering
   // label counter
   labelCounters: { point: 0, line: 0, circle: 0, polygon: 0, text: 0, angle: 0, measure: 0 },
   editingGroupId: null,        // type:group currently being edited
@@ -1453,24 +1454,24 @@ function drawTempPreview() {
 
   // Preview line to mouse
   // Draw snap indicator
-  // Permanent snap markers on segments when a drawing tool is active
-  const isDrawTool = state.tool !== 'select' && state.tool !== 'lasso' && state.tool !== 'pan' && state.tool !== 'rotate';
-  if (isDrawTool) {
-    state.objects.forEach(o => {
-      if (o.type !== 'segment' || !o.visible) return;
+  // Snap markers on hovered line-like objects (always, not just drawing tools)
+  if (state.snapHoverObjs && state.snapHoverObjs.length) {
+    state.snapHoverObjs.forEach(o => {
       const p1 = getPoint(o.p1id), p2 = getPoint(o.p2id);
       if (!p1 || !p2) return;
       ctx.save();
       // Midpoint — diamond ◆
       const mc = worldToCanvas((p1.x + p2.x) / 2, (p1.y + p2.y) / 2);
-      ctx.strokeStyle = 'rgba(137,220,235,0.7)'; ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.moveTo(mc.x, mc.y - 5); ctx.lineTo(mc.x + 5, mc.y);
-      ctx.lineTo(mc.x, mc.y + 5); ctx.lineTo(mc.x - 5, mc.y); ctx.closePath(); ctx.stroke();
-      // Quarter points — small triangles
-      ctx.strokeStyle = 'rgba(203,166,247,0.65)'; ctx.lineWidth = 1.5;
-      for (const t of [0.25, 0.75]) {
-        const qc = worldToCanvas(p1.x + t * (p2.x - p1.x), p1.y + t * (p2.y - p1.y));
-        ctx.beginPath(); ctx.moveTo(qc.x - 4, qc.y + 3); ctx.lineTo(qc.x, qc.y - 4); ctx.lineTo(qc.x + 4, qc.y + 3); ctx.closePath(); ctx.stroke();
+      ctx.strokeStyle = 'rgba(137,220,235,0.85)'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(mc.x, mc.y - 6); ctx.lineTo(mc.x + 6, mc.y);
+      ctx.lineTo(mc.x, mc.y + 6); ctx.lineTo(mc.x - 6, mc.y); ctx.closePath(); ctx.stroke();
+      // Quarter points — small triangles (segments only)
+      if (o.type === 'segment') {
+        ctx.strokeStyle = 'rgba(203,166,247,0.80)'; ctx.lineWidth = 1.5;
+        for (const t of [0.25, 0.75]) {
+          const qc = worldToCanvas(p1.x + t * (p2.x - p1.x), p1.y + t * (p2.y - p1.y));
+          ctx.beginPath(); ctx.moveTo(qc.x - 5, qc.y + 4); ctx.lineTo(qc.x, qc.y - 5); ctx.lineTo(qc.x + 5, qc.y + 4); ctx.closePath(); ctx.stroke();
+        }
       }
       ctx.restore();
     });
@@ -2625,6 +2626,25 @@ canvas.addEventListener('mousemove', e => {
   document.getElementById('coords-display').textContent =
     `x = ${world.x.toFixed(2)}, y = ${world.y.toFixed(2)}`;
 
+  // Detect hovered line-like objects for snap markers (always active)
+  const HOVER_LINE_PX = 12;
+  const cPos2 = { x: pos.x, y: pos.y };
+  const prevHover = (state.snapHoverObjs || []).map(o => o.id).join(',');
+  state.snapHoverObjs = state.objects.filter(o => {
+    if (!isLineLike(o) || !o.visible) return false;
+    const p1 = getPoint(o.p1id), p2 = getPoint(o.p2id);
+    if (!p1 || !p2) return false;
+    const c1 = worldToCanvas(p1.x, p1.y), c2 = worldToCanvas(p2.x, p2.y);
+    const dx = c2.x - c1.x, dy = c2.y - c1.y;
+    const len2 = dx * dx + dy * dy;
+    if (len2 < 1) return false;
+    const t = ((cPos2.x - c1.x) * dx + (cPos2.y - c1.y) * dy) / len2;
+    const tc = (o.type === 'segment') ? Math.max(0, Math.min(1, t)) : t;
+    const fx = c1.x + tc * dx, fy = c1.y + tc * dy;
+    return Math.hypot(cPos2.x - fx, cPos2.y - fy) < HOVER_LINE_PX;
+  });
+  const newHover = (state.snapHoverObjs || []).map(o => o.id).join(',');
+
   // Compute snap candidate when a drawing tool is active.
   // Object snapping (points, midpoints, quarters, perpendicular) always active.
   // Grid snapping only when snapUnit > 0.
@@ -2634,7 +2654,7 @@ canvas.addEventListener('mousemove', e => {
   } else {
     state.snapCandidate = null;
   }
-  if (state.tempPoints.length || state.snapCandidate || isDrawingTool) render();
+  if (state.tempPoints.length || state.snapCandidate || isDrawingTool || prevHover !== newHover) render();
 });
 
 canvas.addEventListener('mouseup', e => {
