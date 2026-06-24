@@ -1443,18 +1443,8 @@ function drawDistanceMeasure(obj) {
 // ── Temp preview ──────────────────────────────────
 function drawTempPreview() {
   const pts = state.tempPoints;
-  if (!pts.length) return;
 
-  // Draw already-placed temp points
-  pts.forEach(p => {
-    const c = worldToCanvas(p.x, p.y);
-    ctx.beginPath(); ctx.arc(c.x, c.y, 4, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255,220,100,0.8)'; ctx.fill();
-  });
-
-  // Preview line to mouse
-  // Draw snap indicator
-  // Snap markers on hovered line-like objects (always, not just drawing tools)
+  // Snap markers on hovered line-like objects — always drawn, even without tempPoints
   if (state.snapHoverObjs && state.snapHoverObjs.length) {
     state.snapHoverObjs.forEach(o => {
       const p1 = getPoint(o.p1id), p2 = getPoint(o.p2id);
@@ -1500,6 +1490,15 @@ function drawTempPreview() {
       ctx.strokeStyle = '#f9e2af'; ctx.lineWidth = 2; ctx.stroke();
     }
   }
+
+  // Draw already-placed temp points
+  pts.forEach(p => {
+    const c = worldToCanvas(p.x, p.y);
+    ctx.beginPath(); ctx.arc(c.x, c.y, 4, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,220,100,0.8)'; ctx.fill();
+  });
+
+  if (!pts.length) return;
 
   if (state.mouseWorld && pts.length >= 1) {
     const last = pts[pts.length - 1];
