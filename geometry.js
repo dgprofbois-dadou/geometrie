@@ -55,6 +55,7 @@ const state = {
   dragZoneId: null,
   dragZoneOffset: null,      // {dx, dy} world offset from zone center to click point
   zoneResizedCallback: null,
+  zoneSnapGuides: [],        // [{x1,y1,x2,y2}] canvas lines drawn during zone drag/resize
   // label counter
   labelCounters: { point: 0, line: 0, circle: 0, polygon: 0, text: 0, angle: 0, measure: 0 },
   editingGroupId: null,        // type:group currently being edited
@@ -709,6 +710,18 @@ function drawZones() {
     ctx.fillText('PIÈCES', (p1.x + p2.x) / 2, p1.y - 10);
     ctx.restore();
   }
+  // Snap guides
+  if (state.zoneSnapGuides && state.zoneSnapGuides.length) {
+    ctx.save();
+    state.zoneSnapGuides.forEach(g => {
+      ctx.strokeStyle = g.dashed ? 'rgba(250,200,50,0.85)' : 'rgba(240,80,180,0.9)';
+      ctx.lineWidth = g.dashed ? 1 : 1.5;
+      if (g.dashed) ctx.setLineDash([4, 3]); else ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(g.x1, g.y1); ctx.lineTo(g.x2, g.y2); ctx.stroke();
+    });
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
 }
 
 function getZoneMoveHandleCanvas(z) {
@@ -724,6 +737,107 @@ function findZoneMoveHandleAt(cx, cy) {
     if (Math.abs(cx - h.x) <= 9 && Math.abs(cy - h.y) <= 9) return z;
   }
   return null;
+}
+
+// ── Zone snapping ─────────────────────────────────
+const ZONE_SNAP_PX = 14; // canvas-pixel threshold for snapping
+
+// Compute snapped position & guides when dragging a zone.
+// Returns {x1,y1,x2,y2} (world) after snapping, populates state.zoneSnapGuides.
+function snapDraggedZone(z, x1, y1, x2, y2) {
+  const guides = [];
+  const others = state.zones.filter(o => o.id !== z.id);
+  const W = x2 - x1, H = y2 - y1;
+  let dx = 0, dy = 0;
+
+  // Candidate snaps: align edges or centres with other zones
+  const snapX = []; // {offset, refCanvas}
+  const snapY = [];
+
+  others.forEach(o => {
+    const oc = { l: worldToCanvas(o.x1, 0).x, r: worldToCanvas(o.x2, 0).x,
+                  cx: worldToCanvas((o.x1+o.x2)/2, 0).x };
+    const nc = { l: worldToCanvas(x1, 0).x, r: worldToCanvas(x2, 0).x,
+                  cx: worldToCanvas((x1+x2)/2, 0).x };
+    // X snaps
+    [
+      { d: nc.l  - oc.l,  ref: oc.l  }, { d: nc.r  - oc.r,  ref: oc.r  },
+      { d: nc.cx - oc.cx, ref: oc.cx }, { d: nc.l  - oc.r,  ref: oc.r  },
+      { d: nc.r  - oc.l,  ref: oc.l  },
+    ].forEach(({ d, ref }) => {
+      if (Math.abs(d) < ZONE_SNAP_PX) snapX.push({ d, ref });
+    });
+
+    const op = { t: worldToCanvas(0, o.y2).y, b: worldToCanvas(0, o.y1).y,
+                  cy: worldToCanvas(0, (o.y1+o.y2)/2).y };
+    const np = { t: worldToCanvas(0, y2).y, b: worldToCanvas(0, y1).y,
+                  cy: worldToCanvas(0, (y1+y2)/2).y };
+    // Y snaps
+    [
+      { d: np.t  - op.t,  ref: op.t  }, { d: np.b  - op.b,  ref: op.b  },
+      { d: np.cy - op.cy, ref: op.cy }, { d: np.t  - op.b,  ref: op.b  },
+      { d: np.b  - op.t,  ref: op.t  },
+    ].forEach(({ d, ref }) => {
+      if (Math.abs(d) < ZONE_SNAP_PX) snapY.push({ d, ref });
+    });
+  });
+
+  // Pick best (smallest |d|) for each axis
+  if (snapX.length) {
+    snapX.sort((a, b) => Math.abs(a.d) - Math.abs(b.d));
+    const best = snapX[0];
+    dx = best.d / state.scale; // world delta
+    const gx = best.ref;
+    const pTop = Math.min(...state.zones.map(z => worldToCanvas(0, z.y2).y)) - 20;
+    const pBot = Math.max(...state.zones.map(z => worldToCanvas(0, z.y1).y)) + 20;
+    guides.push({ x1: gx, y1: pTop, x2: gx, y2: pBot, axis: 'x' });
+  }
+  if (snapY.length) {
+    snapY.sort((a, b) => Math.abs(a.d) - Math.abs(b.d));
+    const best = snapY[0];
+    dy = -best.d / state.scale; // world delta (y inverted)
+    const gy = best.ref;
+    const pL = Math.min(...state.zones.map(z => worldToCanvas(z.x1, 0).x)) - 20;
+    const pR = Math.max(...state.zones.map(z => worldToCanvas(z.x2, 0).x)) + 20;
+    guides.push({ x1: pL, y1: gy, x2: pR, y2: gy, axis: 'y' });
+  }
+
+  state.zoneSnapGuides = guides;
+  return { x1: x1 - dx, y1: y1 + dy, x2: x2 - dx, y2: y2 + dy };
+}
+
+// Compute snapped size & guides when resizing a zone.
+// Returns {hw, hh} (half-width, half-height in world) after snapping.
+function snapResizedZone(z, hw, hh) {
+  const guides = [];
+  const others = state.zones.filter(o => o.id !== z.id);
+  let snappedHw = hw, snappedHh = hh;
+
+  others.forEach(o => {
+    const oHw = (o.x2 - o.x1) / 2;
+    const oHh = (o.y2 - o.y1) / 2;
+    const dWpx = Math.abs(hw - oHw) * state.scale;
+    const dHpx = Math.abs(hh - oHh) * state.scale;
+    if (dWpx < ZONE_SNAP_PX) {
+      snappedHw = oHw;
+      const cx = (z.x1 + z.x2) / 2;
+      const l = worldToCanvas(cx - oHw, 0).x, r = worldToCanvas(cx + oHw, 0).x;
+      const ot = worldToCanvas(0, o.y2).y, ob = worldToCanvas(0, o.y1).y;
+      guides.push({ x1: l, y1: ot - 6, x2: l, y2: ob + 6, axis: 'w', dashed: true });
+      guides.push({ x1: r, y1: ot - 6, x2: r, y2: ob + 6, axis: 'w', dashed: true });
+    }
+    if (dHpx < ZONE_SNAP_PX) {
+      snappedHh = oHh;
+      const cy = (z.y1 + z.y2) / 2;
+      const t = worldToCanvas(0, cy + oHh).y, b = worldToCanvas(0, cy - oHh).y;
+      const ol = worldToCanvas(o.x1, 0).x, or_ = worldToCanvas(o.x2, 0).x;
+      guides.push({ x1: ol - 6, y1: t, x2: or_ + 6, y2: t, axis: 'h', dashed: true });
+      guides.push({ x1: ol - 6, y1: b, x2: or_ + 6, y2: b, axis: 'h', dashed: true });
+    }
+  });
+
+  state.zoneSnapGuides = guides;
+  return { hw: snappedHw, hh: snappedHh };
 }
 
 function findZoneHandleAt(cx, cy) {
@@ -2281,8 +2395,14 @@ canvas.addEventListener('mousemove', e => {
     const z = state.zones.find(z => z.id === state.resizeZoneId);
     if (z) {
       const cx = state.resizeZoneCenter.x, cy = state.resizeZoneCenter.y;
-      const hw = Math.max(0.5, world.x - cx);
-      const hh = Math.max(0.5, cy - world.y);
+      let hw = Math.max(0.5, world.x - cx);
+      let hh = Math.max(0.5, cy - world.y);
+      if (state.zones.length > 1) {
+        const snapped = snapResizedZone(z, hw, hh);
+        hw = snapped.hw; hh = snapped.hh;
+      } else {
+        state.zoneSnapGuides = [];
+      }
       z.x1 = cx - hw; z.x2 = cx + hw;
       z.y1 = cy - hh; z.y2 = cy + hh;
       render();
@@ -2296,8 +2416,14 @@ canvas.addEventListener('mousemove', e => {
       const hw = (z.x2 - z.x1) / 2, hh = (z.y2 - z.y1) / 2;
       const newCx = world.x - state.dragZoneOffset.dx;
       const newCy = world.y - state.dragZoneOffset.dy;
-      z.x1 = newCx - hw; z.x2 = newCx + hw;
-      z.y1 = newCy - hh; z.y2 = newCy + hh;
+      let nx1 = newCx - hw, ny1 = newCy - hh, nx2 = newCx + hw, ny2 = newCy + hh;
+      if (state.zones.length > 1) {
+        const snapped = snapDraggedZone(z, nx1, ny1, nx2, ny2);
+        nx1 = snapped.x1; ny1 = snapped.y1; nx2 = snapped.x2; ny2 = snapped.y2;
+      } else {
+        state.zoneSnapGuides = [];
+      }
+      z.x1 = nx1; z.y1 = ny1; z.x2 = nx2; z.y2 = ny2;
       render();
     }
     return;
@@ -2484,6 +2610,7 @@ canvas.addEventListener('mouseup', e => {
     const z = state.zones.find(z => z.id === state.resizeZoneId);
     state.resizeZoneId = null;
     state.resizeZoneCenter = null;
+    state.zoneSnapGuides = [];
     canvas.style.cursor = 'default';
     if (z && state.zoneResizedCallback) state.zoneResizedCallback(z.id, z.x1, z.y1, z.x2, z.y2);
     render(); return;
@@ -2494,6 +2621,7 @@ canvas.addEventListener('mouseup', e => {
     const z = state.zones.find(z => z.id === state.dragZoneId);
     state.dragZoneId = null;
     state.dragZoneOffset = null;
+    state.zoneSnapGuides = [];
     canvas.style.cursor = 'default';
     if (z && state.zoneResizedCallback) state.zoneResizedCallback(z.id, z.x1, z.y1, z.x2, z.y2);
     render(); return;
