@@ -2419,6 +2419,26 @@ canvas.addEventListener('mousemove', e => {
   const world = canvasToWorld(pos.x, pos.y);
   state.mouseWorld = world;
 
+  // Detect hovered line-like objects for snap markers — always first, before any early return
+  {
+    const HOVER_LINE_PX = 12;
+    const prevSnapHover = (state.snapHoverObjs || []).map(o => o.id).join(',');
+    state.snapHoverObjs = state.objects.filter(o => {
+      if (!isLineLike(o) || !o.visible) return false;
+      const p1 = getPoint(o.p1id), p2 = getPoint(o.p2id);
+      if (!p1 || !p2) return false;
+      const c1 = worldToCanvas(p1.x, p1.y), c2 = worldToCanvas(p2.x, p2.y);
+      const dx = c2.x - c1.x, dy = c2.y - c1.y;
+      const len2 = dx * dx + dy * dy;
+      if (len2 < 1) return false;
+      const t = ((pos.x - c1.x) * dx + (pos.y - c1.y) * dy) / len2;
+      const tc = (o.type === 'segment') ? Math.max(0, Math.min(1, t)) : t;
+      return Math.hypot(pos.x - (c1.x + tc * dx), pos.y - (c1.y + tc * dy)) < HOVER_LINE_PX;
+    });
+    const curSnapHover = state.snapHoverObjs.map(o => o.id).join(',');
+    if (prevSnapHover !== curSnapHover) render();
+  }
+
   if (state.isPanning && state.panStart) {
     state.ox = state.panStart.ox - (pos.x - state.panStart.cx) / state.scale;
     state.oy = state.panStart.oy + (pos.y - state.panStart.cy) / state.scale;
@@ -2626,24 +2646,6 @@ canvas.addEventListener('mousemove', e => {
   document.getElementById('coords-display').textContent =
     `x = ${world.x.toFixed(2)}, y = ${world.y.toFixed(2)}`;
 
-  // Detect hovered line-like objects for snap markers (always active)
-  const HOVER_LINE_PX = 12;
-  const prevSnapHover = (state.snapHoverObjs || []).map(o => o.id).join(',');
-  state.snapHoverObjs = state.objects.filter(o => {
-    if (!isLineLike(o) || !o.visible) return false;
-    const p1 = getPoint(o.p1id), p2 = getPoint(o.p2id);
-    if (!p1 || !p2) return false;
-    const c1 = worldToCanvas(p1.x, p1.y), c2 = worldToCanvas(p2.x, p2.y);
-    const dx = c2.x - c1.x, dy = c2.y - c1.y;
-    const len2 = dx * dx + dy * dy;
-    if (len2 < 1) return false;
-    const t = ((pos.x - c1.x) * dx + (pos.y - c1.y) * dy) / len2;
-    const tc = (o.type === 'segment') ? Math.max(0, Math.min(1, t)) : t;
-    const fx = c1.x + tc * dx, fy = c1.y + tc * dy;
-    return Math.hypot(pos.x - fx, pos.y - fy) < HOVER_LINE_PX;
-  });
-  const curSnapHover = (state.snapHoverObjs || []).map(o => o.id).join(',');
-
   // Compute snap candidate when a drawing tool is active.
   // Object snapping (points, midpoints, quarters, perpendicular) always active.
   // Grid snapping only when snapUnit > 0.
@@ -2653,7 +2655,7 @@ canvas.addEventListener('mousemove', e => {
   } else {
     state.snapCandidate = null;
   }
-  if (state.tempPoints.length || state.snapCandidate || isDrawingTool || prevSnapHover !== curSnapHover) render();
+  if (state.tempPoints.length || state.snapCandidate || isDrawingTool) render();
 });
 
 canvas.addEventListener('mouseup', e => {
