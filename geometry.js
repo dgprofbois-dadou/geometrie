@@ -1049,16 +1049,35 @@ function drawGrid() {
   const minW = canvasToWorld(0, 0), maxW = canvasToWorld(W, H);
   const gridStep = pickGridStep();
 
-  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-  ctx.lineWidth = 1;
-
+  // Minor grid lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+  ctx.lineWidth = 0.5;
   const startX = Math.ceil(minW.x / gridStep) * gridStep;
   for (let x = startX; x <= maxW.x + gridStep; x += gridStep) {
+    if (Math.abs(x) < gridStep * 0.01) continue; // skip axis (drawn separately)
     const c = worldToCanvas(x, 0);
     ctx.beginPath(); ctx.moveTo(c.x, 0); ctx.lineTo(c.x, H); ctx.stroke();
   }
   const startY = Math.ceil(maxW.y / gridStep) * gridStep;
   for (let y = startY; y <= minW.y + gridStep; y += gridStep) {
+    if (Math.abs(y) < gridStep * 0.01) continue;
+    const c = worldToCanvas(0, y);
+    ctx.beginPath(); ctx.moveTo(0, c.y); ctx.lineTo(W, c.y); ctx.stroke();
+  }
+
+  // Major grid lines every 5 steps (more visible)
+  const majorStep = gridStep * 5;
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  ctx.lineWidth = 0.5;
+  const mStartX = Math.ceil(minW.x / majorStep) * majorStep;
+  for (let x = mStartX; x <= maxW.x + majorStep; x += majorStep) {
+    if (Math.abs(x) < majorStep * 0.01) continue;
+    const c = worldToCanvas(x, 0);
+    ctx.beginPath(); ctx.moveTo(c.x, 0); ctx.lineTo(c.x, H); ctx.stroke();
+  }
+  const mStartY = Math.ceil(maxW.y / majorStep) * majorStep;
+  for (let y = mStartY; y <= minW.y + majorStep; y += majorStep) {
+    if (Math.abs(y) < majorStep * 0.01) continue;
     const c = worldToCanvas(0, y);
     ctx.beginPath(); ctx.moveTo(0, c.y); ctx.lineTo(W, c.y); ctx.stroke();
   }
@@ -1077,8 +1096,8 @@ function drawAxes() {
   const W = canvas.width, H = canvas.height;
   const o = worldToCanvas(0, 0);
 
-  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
-  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+  ctx.lineWidth = 1.5;
 
   // X axis
   ctx.beginPath(); ctx.moveTo(0, o.y); ctx.lineTo(W, o.y); ctx.stroke();
@@ -1086,8 +1105,8 @@ function drawAxes() {
   ctx.beginPath(); ctx.moveTo(o.x, 0); ctx.lineTo(o.x, H); ctx.stroke();
 
   // Axis labels
-  ctx.fillStyle = 'rgba(255,255,255,0.3)';
-  ctx.font = '11px monospace';
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.font = 'bold 12px monospace';
   ctx.textAlign = 'left'; ctx.textBaseline = 'top';
   ctx.fillText('x', W - 16, o.y + 4);
   ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic';
@@ -1097,16 +1116,18 @@ function drawAxes() {
   const step = pickGridStep();
   const minW = canvasToWorld(0, H), maxW = canvasToWorld(W, 0);
 
-  ctx.fillStyle = 'rgba(255,255,255,0.25)';
-  ctx.font = '9px monospace';
+  ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+  ctx.lineWidth = 1;
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.font = '10px monospace';
   ctx.textAlign = 'center';
 
   const startX = Math.ceil(minW.x / step) * step;
   for (let x = startX; x <= maxW.x; x += step) {
     if (Math.abs(x) < step * 0.1) continue;
     const c = worldToCanvas(x, 0);
-    ctx.beginPath(); ctx.moveTo(c.x, o.y - 3); ctx.lineTo(c.x, o.y + 3); ctx.stroke();
-    if (state.scale > 25) ctx.fillText(formatNum(x), c.x, o.y + 5);
+    ctx.beginPath(); ctx.moveTo(c.x, o.y - 4); ctx.lineTo(c.x, o.y + 4); ctx.stroke();
+    if (state.scale > 20) ctx.fillText(formatNum(x), c.x, o.y + 7);
   }
 
   ctx.textAlign = 'right';
@@ -1114,8 +1135,8 @@ function drawAxes() {
   for (let y = startY; y <= minW.y; y += step) {
     if (Math.abs(y) < step * 0.1) continue;
     const c = worldToCanvas(0, y);
-    ctx.beginPath(); ctx.moveTo(o.x - 3, c.y); ctx.lineTo(o.x + 3, c.y); ctx.stroke();
-    if (state.scale > 25) ctx.fillText(formatNum(y), o.x - 5, c.y + 3);
+    ctx.beginPath(); ctx.moveTo(o.x - 4, c.y); ctx.lineTo(o.x + 4, c.y); ctx.stroke();
+    if (state.scale > 20) ctx.fillText(formatNum(y), o.x - 6, c.y + 3);
   }
 }
 
