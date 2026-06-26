@@ -1095,53 +1095,61 @@ function pickGridStep() {
 function drawAxes() {
   const W = canvas.width, H = canvas.height;
   const o = worldToCanvas(0, 0);
-
-  ctx.strokeStyle = 'rgba(255,255,255,0.45)';
-  ctx.lineWidth = 1.5;
-
-  // X axis
-  ctx.beginPath(); ctx.moveTo(0, o.y); ctx.lineTo(W, o.y); ctx.stroke();
-  // Y axis
-  ctx.beginPath(); ctx.moveTo(o.x, 0); ctx.lineTo(o.x, H); ctx.stroke();
-
-  // Axis labels
-  ctx.fillStyle = 'rgba(255,255,255,0.6)';
-  ctx.font = 'bold 12px monospace';
-  ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-  ctx.fillText('x', W - 16, o.y + 4);
-  ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic';
-  ctx.fillText('y', o.x - 4, 14);
-
-  // Tick marks + numbers
   const step = pickGridStep();
   const minW = canvasToWorld(0, H), maxW = canvasToWorld(W, 0);
 
+  ctx.save();
+
+  // Axes lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(0, o.y); ctx.lineTo(W, o.y); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(o.x, 0); ctx.lineTo(o.x, H); ctx.stroke();
+
+  // Axis letter labels
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.font = 'bold 13px monospace';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  ctx.fillText('x', W - 16, o.y + 4);
+  ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+  ctx.fillText('y', o.x - 4, 4);
+
+  // Ticks + numbers on X axis
   ctx.strokeStyle = 'rgba(255,255,255,0.45)';
   ctx.lineWidth = 1;
-  ctx.fillStyle = 'rgba(255,255,255,0.75)';
-  ctx.font = 'bold 13px monospace';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'top';
-
   const startX = Math.ceil(minW.x / step) * step;
   for (let x = startX; x <= maxW.x; x += step) {
     if (Math.abs(x) < step * 0.1) continue;
     const c = worldToCanvas(x, 0);
     ctx.beginPath(); ctx.moveTo(c.x, o.y - 4); ctx.lineTo(c.x, o.y + 4); ctx.stroke();
-    const labelY = o.y < H - 20 ? o.y + 6 : o.y - 18;
-    ctx.fillText(formatNum(x), c.x, labelY);
+    ctx.fillStyle = 'rgba(255,255,255,0.80)';
+    ctx.font = 'bold 13px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = o.y < H - 20 ? 'top' : 'bottom';
+    ctx.fillText(formatNum(x), c.x, o.y < H - 20 ? o.y + 6 : o.y - 6);
   }
 
-  ctx.textBaseline = 'middle';
+  // Ticks + numbers on Y axis
   const startY = Math.ceil(maxW.y / step) * step;
   for (let y = startY; y <= minW.y; y += step) {
     if (Math.abs(y) < step * 0.1) continue;
     const c = worldToCanvas(0, y);
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+    ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(o.x - 4, c.y); ctx.lineTo(o.x + 4, c.y); ctx.stroke();
-    const labelX = o.x > 30 ? o.x - 8 : o.x + 26;
-    ctx.textAlign = o.x > 30 ? 'right' : 'left';
-    ctx.fillText(formatNum(y), labelX, c.y);
+    ctx.fillStyle = 'rgba(255,255,255,0.80)';
+    ctx.font = 'bold 13px monospace';
+    ctx.textBaseline = 'middle';
+    if (o.x > 40) {
+      ctx.textAlign = 'right';
+      ctx.fillText(formatNum(y), o.x - 8, c.y);
+    } else {
+      ctx.textAlign = 'left';
+      ctx.fillText(formatNum(y), o.x + 8, c.y);
+    }
   }
+
+  ctx.restore();
 }
 
 function formatNum(n) {
