@@ -1128,24 +1128,19 @@ function drawAxes() {
     if (Math.abs(x) < step * 0.1) continue;
     const c = worldToCanvas(x, 0);
     ctx.beginPath(); ctx.moveTo(c.x, o.y - 4); ctx.lineTo(c.x, o.y + 4); ctx.stroke();
-    if (state.scale > 20) {
-      const labelY = o.y < H - 20 ? o.y + 6 : o.y - 18;
-      ctx.fillText(formatNum(x), c.x, labelY);
-    }
+    const labelY = o.y < H - 20 ? o.y + 6 : o.y - 18;
+    ctx.fillText(formatNum(x), c.x, labelY);
   }
 
-  ctx.textAlign = 'right';
   ctx.textBaseline = 'middle';
   const startY = Math.ceil(maxW.y / step) * step;
   for (let y = startY; y <= minW.y; y += step) {
     if (Math.abs(y) < step * 0.1) continue;
     const c = worldToCanvas(0, y);
     ctx.beginPath(); ctx.moveTo(o.x - 4, c.y); ctx.lineTo(o.x + 4, c.y); ctx.stroke();
-    if (state.scale > 20) {
-      const labelX = o.x > 30 ? o.x - 8 : o.x + 26;
-      ctx.textAlign = o.x > 30 ? 'right' : 'left';
-      ctx.fillText(formatNum(y), labelX, c.y);
-    }
+    const labelX = o.x > 30 ? o.x - 8 : o.x + 26;
+    ctx.textAlign = o.x > 30 ? 'right' : 'left';
+    ctx.fillText(formatNum(y), labelX, c.y);
   }
 }
 
