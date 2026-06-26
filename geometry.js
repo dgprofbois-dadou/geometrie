@@ -1118,8 +1118,8 @@ function drawAxes() {
 
   ctx.strokeStyle = 'rgba(255,255,255,0.45)';
   ctx.lineWidth = 1;
-  ctx.fillStyle = 'rgba(255,255,255,0.55)';
-  ctx.font = '10px monospace';
+  ctx.fillStyle = 'rgba(255,255,255,0.75)';
+  ctx.font = 'bold 13px monospace';
   ctx.textAlign = 'center';
 
   const startX = Math.ceil(minW.x / step) * step;
